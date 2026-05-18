@@ -1,5 +1,6 @@
 import { Resend } from 'resend'
 import type { Job } from './types'
+import type { AIRecommendation } from './ai'
 
 export type TeeTime = { time: string }
 
@@ -7,8 +8,18 @@ function getResend() {
   return new Resend(process.env.RESEND_API_KEY)
 }
 
-export async function sendNotificationEmail(job: Job, teeTimes: { time: string }[]) {
+export async function sendNotificationEmail(
+  job: Job,
+  teeTimes: { time: string }[],
+  recommendation?: AIRecommendation | null
+) {
   const timeList = teeTimes.map((t) => `• ${t.time}`).join('\n')
+  const aiBlock = recommendation
+    ? `<div style="background:#f0f7ed;border-left:4px solid #2d7a2d;padding:12px 16px;margin:16px 0;border-radius:4px">
+        <strong>🤖 AI-rekommendation:</strong> Boka <strong>${recommendation.recommendedTime}</strong><br>
+        <em>${recommendation.explanation}</em>
+      </div>`
+    : ''
 
   await getResend().emails.send({
     from: 'Golfboking <noreply@golfboking.se>',
@@ -20,6 +31,7 @@ export async function sendNotificationEmail(job: Job, teeTimes: { time: string }
       <p><strong>Datum:</strong> ${job.date}</p>
       <p><strong>Lediga tider:</strong></p>
       <pre>${timeList}</pre>
+      ${aiBlock}
       <p>Logga in på <a href="https://mingolf.golf.se">MinGolf</a> för att boka.</p>
       <hr>
       <small>Golfboking – automatisk golfbevakare</small>

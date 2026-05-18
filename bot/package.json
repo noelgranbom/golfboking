@@ -1,0 +1,14 @@
+{
+  "name": "golfboking-bot",
+  "version": "1.0.0",
+  "description": "MinGolf-bevakare som kör lokalt på Mac",
+  "type": "module",
+  "scripts": {
+    "start": "node bot.js",
+    "install-browser": "npx playwright install chromium"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.54.0",
+    "playwright": "^1.49.0"
+  }
+}

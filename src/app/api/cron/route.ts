@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase'
 import { scanAndBook } from '@/lib/bot/mingolf'
 import { sendNotificationEmail, sendBookingConfirmationEmail, sendErrorEmail } from '@/lib/email'
+import { recommendTeeTime } from '@/lib/ai'
 import type { Job } from '@/lib/types'
 
 export const maxDuration = 60 // seconds
@@ -64,8 +65,17 @@ async function processJob(job: Job, supabase: ReturnType<typeof createServiceCli
     }
 
     if (job.mode === 'notify') {
+      const times = result.teeTimes.map((t) => t.time)
+      const recommendation = process.env.ANTHROPIC_API_KEY
+        ? await recommendTeeTime(job, times)
+        : null
+
+      if (recommendation) {
+        await addLog(supabase, job.id, 'info', `🤖 AI rekommenderar: ${recommendation.recommendedTime} — ${recommendation.explanation}`)
+      }
+
       await addLog(supabase, job.id, 'success', `${result.teeTimes.length} ledig tid(er) hittad! Skickar mail till ${job.email}…`)
-      await sendNotificationEmail(job, result.teeTimes)
+      await sendNotificationEmail(job, result.teeTimes, recommendation)
       await addLog(supabase, job.id, 'success', 'Notis skickad via mail.')
       // Pause job after notifying so we don't spam
       await supabase.from('jobs').update({ status: 'completed' }).eq('id', job.id)
