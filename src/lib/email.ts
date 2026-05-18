@@ -3,12 +3,14 @@ import type { Job } from './types'
 
 export type TeeTime = { time: string }
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+function getResend() {
+  return new Resend(process.env.RESEND_API_KEY)
+}
 
 export async function sendNotificationEmail(job: Job, teeTimes: { time: string }[]) {
   const timeList = teeTimes.map((t) => `• ${t.time}`).join('\n')
 
-  await resend.emails.send({
+  await getResend().emails.send({
     from: 'Golfboking <noreply@golfboking.se>',
     to: job.email,
     subject: `Ledig golftid hittad – ${job.club_name} ${job.date}`,
@@ -26,7 +28,7 @@ export async function sendNotificationEmail(job: Job, teeTimes: { time: string }
 }
 
 export async function sendBookingConfirmationEmail(job: Job, bookedTime: string) {
-  await resend.emails.send({
+  await getResend().emails.send({
     from: 'Golfboking <noreply@golfboking.se>',
     to: job.email,
     subject: `Golftid bokad – ${job.club_name} ${job.date} kl. ${bookedTime}`,
@@ -45,7 +47,7 @@ export async function sendBookingConfirmationEmail(job: Job, bookedTime: string)
 }
 
 export async function sendErrorEmail(job: Job, errorMessage: string) {
-  await resend.emails.send({
+  await getResend().emails.send({
     from: 'Golfboking <noreply@golfboking.se>',
     to: job.email,
     subject: `Golfboking – fel vid bevakning av ${job.club_name}`,
