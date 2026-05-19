@@ -79,6 +79,20 @@ export function Dashboard({ job: initialJob, onDelete }: DashboardProps) {
     return () => { supabase.removeChannel(channel) }
   }, [job.id])
 
+  // Client-side scan polling (handles preview deploys where Vercel Crons don't run)
+  useEffect(() => {
+    if (job.status !== 'active') return
+
+    async function triggerScan() {
+      await fetch(`/api/jobs/${job.id}/scan`, { method: 'POST' })
+    }
+
+    // Trigger immediately, then every 30s
+    triggerScan()
+    const interval = setInterval(triggerScan, 30_000)
+    return () => clearInterval(interval)
+  }, [job.id, job.status])
+
   // Countdown to next scan
   useEffect(() => {
     if (!job.next_scan_at || job.status !== 'active') return
@@ -99,7 +113,7 @@ export function Dashboard({ job: initialJob, onDelete }: DashboardProps) {
   }
 
   const statusColor = {
-    active: 'text-green-400',
+    active: 'text-gold',
     paused: 'text-yellow-400',
     completed: 'text-blue-400',
     failed: 'text-red-400',
@@ -112,7 +126,7 @@ export function Dashboard({ job: initialJob, onDelete }: DashboardProps) {
         <div>
           <div className="flex items-center gap-2 mb-1">
             {job.status === 'active' && (
-              <span className="inline-block w-2 h-2 rounded-full bg-green-400" style={{ animation: 'pulse-dot 1.5s ease-in-out infinite' }} />
+              <span className="inline-block w-2 h-2 rounded-full bg-gold" style={{ animation: 'pulse-dot 1.5s ease-in-out infinite' }} />
             )}
             <span className={`text-sm font-semibold ${statusColor}`}>
               {STATUS_LABELS[job.status]}
@@ -122,7 +136,7 @@ export function Dashboard({ job: initialJob, onDelete }: DashboardProps) {
           </div>
           <h3 className="text-white font-semibold text-lg">{job.club_name}</h3>
           <p className="text-white/50 text-sm">
-            {job.date} kl. {job.time_from}–{job.time_to} · {job.num_players} spelare
+            {job.date} kl. {job.time_from.substring(0, 5)}–{job.time_to.substring(0, 5)} · {job.num_players} spelare
           </p>
           {job.friend_golf_ids?.length > 0 && (
             <p className="text-white/30 text-xs mt-1">
@@ -141,9 +155,9 @@ export function Dashboard({ job: initialJob, onDelete }: DashboardProps) {
 
       {/* Booking confirmation */}
       {job.booked_tee_time && (
-        <div className="px-5 py-3 bg-green-500/10 border-b border-green-500/20 flex items-center gap-2">
-          <span className="text-green-400 text-lg">⛳</span>
-          <p className="text-green-300 text-sm font-medium">
+        <div className="px-5 py-3 bg-gold/10 border-b border-gold/20 flex items-center gap-2">
+          <span className="text-gold text-lg">⛳</span>
+          <p className="text-gold-light text-sm font-medium">
             Bokad tid: {job.booked_tee_time} — Bekräftelse skickad till {job.email}
           </p>
         </div>
@@ -153,7 +167,7 @@ export function Dashboard({ job: initialJob, onDelete }: DashboardProps) {
       {job.status === 'active' && countdown !== null && (
         <div className="px-5 py-2 bg-white/3 border-b border-white/5 flex items-center gap-2 text-xs text-white/40">
           <span>Nästa skanning om</span>
-          <span className="font-mono text-green-400">{countdown}s</span>
+          <span className="font-mono text-gold">{countdown}s</span>
         </div>
       )}
 

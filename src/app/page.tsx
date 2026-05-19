@@ -112,8 +112,13 @@ export default function Home() {
         {/* Logo */}
         <div className="text-center mb-10">
           <div className="text-5xl mb-3">⛳</div>
-          <h1 className="text-3xl font-bold text-white">Golfboking</h1>
-          <p className="text-white/40 text-sm mt-1">Automatisk bevakare för MinGolf</p>
+          <h1 className="text-4xl font-semibold text-[#e8f1ea]" style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic', letterSpacing: '-0.5px' }}>Golfboking</h1>
+          <div className="flex items-center justify-center gap-3 my-2.5">
+            <div className="h-px flex-1 max-w-16 bg-gold/60" />
+            <div className="w-1 h-1 rounded-full bg-gold/60" />
+            <div className="h-px flex-1 max-w-16 bg-gold/60" />
+          </div>
+          <p className="text-[#e8f1ea]/40 text-sm">Automatisk bevakare för MinGolf</p>
         </div>
 
         {/* Form card */}
@@ -132,7 +137,7 @@ export default function Home() {
                   placeholder="din@email.se"
                   value={form.email}
                   onChange={(e) => set('email', e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/20 focus:outline-none focus:border-green-500 transition-colors"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/20 focus:outline-none focus:border-gold transition-colors"
                 />
               </div>
 
@@ -143,7 +148,7 @@ export default function Home() {
                   placeholder="123456"
                   value={form.golf_id}
                   onChange={(e) => set('golf_id', e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/20 focus:outline-none focus:border-green-500 transition-colors"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/20 focus:outline-none focus:border-gold transition-colors"
                 />
               </div>
 
@@ -155,7 +160,7 @@ export default function Home() {
                     placeholder="••••••••"
                     value={form.golf_password}
                     onChange={(e) => set('golf_password', e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 pr-12 text-white placeholder-white/20 focus:outline-none focus:border-green-500 transition-colors"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 pr-12 text-white placeholder-white/20 focus:outline-none focus:border-gold transition-colors"
                   />
                   <button
                     type="button"
@@ -173,7 +178,7 @@ export default function Home() {
               <button
                 onClick={() => setStep(2)}
                 disabled={!step1Valid}
-                className="w-full mt-2 bg-green-500 hover:bg-green-400 disabled:bg-white/10 disabled:text-white/20 text-black font-semibold rounded-xl py-3 transition-colors"
+                className="w-full mt-2 bg-gold hover:bg-gold-light disabled:bg-white/10 disabled:text-white/20 text-black font-semibold rounded-xl py-3 transition-colors"
               >
                 Fortsätt
               </button>
@@ -197,7 +202,7 @@ export default function Home() {
                   min={today}
                   value={form.date}
                   onChange={(e) => set('date', e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-green-500 transition-colors"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-gold transition-colors"
                 />
               </div>
 
@@ -208,7 +213,7 @@ export default function Home() {
                     type="time"
                     value={form.time_from}
                     onChange={(e) => set('time_from', e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-green-500 transition-colors"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-gold transition-colors"
                   />
                 </div>
                 <div>
@@ -217,7 +222,7 @@ export default function Home() {
                     type="time"
                     value={form.time_to}
                     onChange={(e) => set('time_to', e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-green-500 transition-colors"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-gold transition-colors"
                   />
                 </div>
               </div>
@@ -232,7 +237,7 @@ export default function Home() {
                       onClick={() => set('num_players', n)}
                       className={`flex-1 py-2.5 rounded-xl font-semibold transition-colors ${
                         form.num_players === n
-                          ? 'bg-green-500 text-black'
+                          ? 'bg-gold text-black'
                           : 'bg-white/5 text-white/50 hover:bg-white/10'
                       }`}
                     >
@@ -254,7 +259,7 @@ export default function Home() {
                     value={friendInput}
                     onChange={(e) => setFriendInput(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && addFriend()}
-                    className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/20 focus:outline-none focus:border-green-500 transition-colors"
+                    className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/20 focus:outline-none focus:border-gold transition-colors"
                   />
                   <button
                     type="button"
@@ -269,7 +274,7 @@ export default function Home() {
                     {form.friend_golf_ids.map((id) => (
                       <span
                         key={id}
-                        className="flex items-center gap-1 bg-green-500/10 text-green-400 text-xs px-3 py-1 rounded-full"
+                        className="flex items-center gap-1 bg-gold/10 text-gold text-xs px-3 py-1 rounded-full"
                       >
                         {id}
                         <button onClick={() => removeFriend(id)} className="hover:text-red-400 transition-colors ml-1">×</button>
@@ -289,7 +294,7 @@ export default function Home() {
                 <button
                   onClick={() => setStep(3)}
                   disabled={!step2Valid}
-                  className="flex-1 bg-green-500 hover:bg-green-400 disabled:bg-white/10 disabled:text-white/20 text-black font-semibold rounded-xl py-3 transition-colors"
+                  className="flex-1 bg-gold hover:bg-gold-light disabled:bg-white/10 disabled:text-white/20 text-black font-semibold rounded-xl py-3 transition-colors"
                 >
                   Fortsätt
                 </button>
@@ -329,7 +334,7 @@ export default function Home() {
                   onClick={() => set('mode', 'notify')}
                   className={`p-4 rounded-xl border text-left transition-all ${
                     form.mode === 'notify'
-                      ? 'border-green-500 bg-green-500/10'
+                      ? 'border-gold bg-gold/10'
                       : 'border-white/10 bg-white/3 hover:border-white/20'
                   }`}
                 >
@@ -345,7 +350,7 @@ export default function Home() {
                   onClick={() => set('mode', 'auto')}
                   className={`p-4 rounded-xl border text-left transition-all ${
                     form.mode === 'auto'
-                      ? 'border-green-500 bg-green-500/10'
+                      ? 'border-gold bg-gold/10'
                       : 'border-white/10 bg-white/3 hover:border-white/20'
                   }`}
                 >
@@ -373,7 +378,7 @@ export default function Home() {
                 <button
                   onClick={handleActivate}
                   disabled={loading}
-                  className="flex-1 bg-green-500 hover:bg-green-400 disabled:opacity-50 text-black font-semibold rounded-xl py-3 transition-colors"
+                  className="flex-1 bg-gold hover:bg-gold-light disabled:opacity-50 text-black font-semibold rounded-xl py-3 transition-colors"
                 >
                   {loading ? 'Startar…' : 'Aktivera bevakning'}
                 </button>

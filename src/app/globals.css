@@ -1,13 +1,22 @@
 @import "tailwindcss";
 
+@theme {
+  --color-gold: #b58a3f;
+  --color-gold-dim: #8a6830;
+  --color-gold-light: #d4a855;
+  --color-augusta: #0e2a1f;
+  --color-augusta-card: #091a12;
+}
+
 :root {
-  --background: #0a1a0a;
-  --foreground: #e8f5e9;
-  --card: #0f2a0f;
-  --border: #1a4a1a;
-  --accent: #22c55e;
-  --accent-dim: #15803d;
-  --muted: #6b9e6b;
+  --background: #0e2a1f;
+  --foreground: #e8f1ea;
+  --card: #091a12;
+  --border: #1a3d2a;
+  --gold: #b58a3f;
+  --gold-dim: #8a6830;
+  --gold-light: #d4a855;
+  --muted: #6b8f7a;
 }
 
 body {

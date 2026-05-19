@@ -19,9 +19,9 @@ export function StepIndicator({ currentStep, steps }: StepIndicatorProps) {
               <div
                 className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-all ${
                   isCompleted
-                    ? 'bg-green-500 text-black'
+                    ? 'bg-gold text-black'
                     : isActive
-                    ? 'bg-green-500 text-black ring-4 ring-green-500/30'
+                    ? 'bg-gold text-black ring-4 ring-gold/30'
                     : 'bg-white/10 text-white/40'
                 }`}
               >
@@ -29,7 +29,7 @@ export function StepIndicator({ currentStep, steps }: StepIndicatorProps) {
               </div>
               <span
                 className={`text-xs whitespace-nowrap ${
-                  isActive ? 'text-green-400' : isCompleted ? 'text-green-600' : 'text-white/30'
+                  isActive ? 'text-gold' : isCompleted ? 'text-gold-dim' : 'text-white/30'
                 }`}
               >
                 {label}
@@ -38,7 +38,7 @@ export function StepIndicator({ currentStep, steps }: StepIndicatorProps) {
             {i < steps.length - 1 && (
               <div
                 className={`h-0.5 w-12 mx-1 mb-4 transition-all ${
-                  step < currentStep ? 'bg-green-500' : 'bg-white/10'
+                  step < currentStep ? 'bg-gold' : 'bg-white/10'
                 }`}
               />
             )}

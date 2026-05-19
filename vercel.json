@@ -2,6 +2,9 @@
   "functions": {
     "src/app/api/cron/route.ts": {
       "maxDuration": 60
+    },
+    "src/app/api/jobs/[id]/scan/route.ts": {
+      "maxDuration": 60
     }
   }
 }
