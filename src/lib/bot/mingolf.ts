@@ -14,7 +14,17 @@ export interface ScanResult {
 }
 
 const BASE = 'https://mingolf.golf.se'
-const BOOKING_BASE = 'https://book.sweetspot.io'
+
+interface UserProfile {
+  personId: string
+  golfId: string
+  firstName: string
+  lastName: string
+  hcp: string
+  age: number
+  gender: string
+  homeClubName: string
+}
 
 function timeInRange(time: string, from: string, to: string): boolean {
   const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m }
@@ -49,27 +59,54 @@ async function loginMinGolf(golfId: string, password: string): Promise<string> {
   return cookieStr
 }
 
-// Step 1b: Visit /bokning/ to pick up booking-app session cookies
+// Step 1b: Visit /bokning/ to pick up booking-app session cookies + user profile
 // Only adds NEW cookie names — never overrides existing auth cookies
-async function enrichCookies(cookies: string): Promise<string> {
+async function enrichCookies(cookies: string): Promise<{ cookies: string; profile: UserProfile | null }> {
   try {
     const res = await fetch(`${BASE}/bokning/`, {
       headers: { Cookie: cookies, Accept: 'text/html' },
       redirect: 'follow',
       signal: sig(),
     })
+    const html = await res.text().catch(() => '')
+
+    // Extract new cookies
     const newCookies = res.headers.getSetCookie?.() ?? []
-    if (newCookies.length === 0) return cookies
+    let enriched = cookies
+    if (newCookies.length > 0) {
+      const existingNames = new Set(cookies.split('; ').map((c) => c.split('=')[0]))
+      const extra = newCookies
+        .map((c) => c.split(';')[0])
+        .filter((c) => !existingNames.has(c.split('=')[0]))
+        .join('; ')
+      if (extra) enriched = `${cookies}; ${extra}`
+    }
 
-    const existingNames = new Set(cookies.split('; ').map((c) => c.split('=')[0]))
-    const extra = newCookies
-      .map((c) => c.split(';')[0])
-      .filter((c) => !existingNames.has(c.split('=')[0]))
-      .join('; ')
+    // Extract user profile from __INITIAL_STATE__
+    let profile: UserProfile | null = null
+    try {
+      const m = html.match(/window\.__INITIAL_STATE__\s*=\s*(\{[\s\S]+?\});\s*window\.__INITIAL_ROUTE__/)
+      if (m) {
+        const state = JSON.parse(m[1])
+        const p = state?.shell?.profile
+        if (p?.personId) {
+          profile = {
+            personId: p.personId,
+            golfId: p.golfId,
+            firstName: p.firstName,
+            lastName: p.lastName,
+            hcp: p.hcp ?? '0',
+            age: parseInt(p.age ?? '0'),
+            gender: p.gender ?? 'Male',
+            homeClubName: p.homeClubName ?? '',
+          }
+        }
+      }
+    } catch { /* profile stays null */ }
 
-    return extra ? `${cookies}; ${extra}` : cookies
+    return { cookies: enriched, profile }
   } catch {
-    return cookies
+    return { cookies, profile: null }
   }
 }
 
@@ -210,30 +247,79 @@ async function fetchStartTimes(
   }).filter((t) => t.time.match(/^\d{2}:\d{2}$/))
 }
 
-// Step 4: Book a slot
+// Step 4: Book a slot via MinGolf proxy
+// Flow: POST /Slot/{id}/Lock → POST /Slot/{id}/Bookings → DELETE /Slot/{id}/Lock
 async function bookSlot(
   cookies: string,
   token: string,
   slotId: string,
-  numberOfPlayers: number,
-  friendGolfIds: string[]
+  friendGolfIds: string[],
+  profile: UserProfile | null
 ): Promise<boolean> {
-  const res = await fetch(`${BOOKING_BASE}/Slot/Unlock/Many`, {
-    method: 'POST',
-    headers: {
-      Cookie: cookies,
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      Origin: BASE,
-      Referer: `${BASE}/bokning/`,
+  const headers = {
+    Cookie: cookies,
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+    Origin: BASE,
+    Referer: `${BASE}/bokning/`,
+  }
+
+  // 1. Lock the slot
+  const lockRes = await fetch(`${BASE}/bokning/api/Slot/${slotId}/Lock`, {
+    method: 'POST', headers, signal: sig(),
+  })
+  if (!lockRes.ok && lockRes.status !== 204) {
+    const b = await lockRes.text().catch(() => '')
+    throw new Error(`Lock HTTP ${lockRes.status}: ${b.substring(0, 200)}`)
+  }
+
+  // 2. Build slotBookings array
+  const makeBooking = (golfId: string, personId: string | undefined, isBooker: boolean) => ({
+    slotBookingId: `new_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`,
+    state: 'Added',
+    hasBeenValidated: false,
+    player: {
+      ...(profile && isBooker ? {
+        personId: profile.personId,
+        firstName: profile.firstName,
+        lastName: profile.lastName,
+        fullName: `${profile.firstName} ${profile.lastName}`,
+        hcp: profile.hcp,
+        age: profile.age,
+        gender: profile.gender,
+        homeClub: profile.homeClubName,
+      } : {}),
+      golfId,
+      isBooker,
+      isGuest: false,
+      hashId: personId ?? golfId,
     },
-    body: JSON.stringify({ SlotId: slotId, NumberOfPlayers: numberOfPlayers, Players: friendGolfIds }),
-    signal: sig(),
+    isNineHole: false,
+    hasArrived: false,
   })
 
-  if (res.status === 401) throw new Error('Token ogiltig vid bokning')
-  return res.ok
+  const slotBookings = [
+    makeBooking(profile?.golfId ?? '', profile?.personId, true),
+    ...friendGolfIds.map((golfId) => makeBooking(golfId, undefined, false)),
+  ]
+
+  // 3. Book
+  const bookRes = await fetch(`${BASE}/bokning/api/Slot/${slotId}/Bookings`, {
+    method: 'POST', headers,
+    body: JSON.stringify(slotBookings),
+    signal: sig(),
+  })
+  const bookBody = await bookRes.text().catch(() => '')
+
+  // 4. Always release lock
+  await fetch(`${BASE}/bokning/api/Slot/${slotId}/Lock`, {
+    method: 'DELETE', headers, signal: sig(),
+  }).catch(() => {})
+
+  if (bookRes.status === 401) throw new Error('Token ogiltig vid bokning')
+  if (!bookRes.ok) throw new Error(`Bokning HTTP ${bookRes.status}: ${bookBody.substring(0, 300)}`)
+  return true
 }
 
 export async function scanAndBook(job: Job): Promise<ScanResult> {
@@ -245,8 +331,9 @@ export async function scanAndBook(job: Job): Promise<ScanResult> {
     return { found: false, teeTimes: [], error: err instanceof Error ? err.message : 'Inloggning misslyckades' }
   }
 
-  // 1b. Enrich cookies by visiting /bokning/
-  cookies = await enrichCookies(cookies)
+  // 1b. Enrich cookies + get user profile from /bokning/
+  const { cookies: enriched, profile } = await enrichCookies(cookies)
+  cookies = enriched
 
   // 2. Get Bearer token
   let token: string
@@ -273,11 +360,12 @@ export async function scanAndBook(job: Job): Promise<ScanResult> {
   // 5. Auto-book first matching slot
   const first = teeTimes[0]
   if (!first.slotId) {
-    return { found: true, teeTimes, error: 'Hittade tider men inget slot-ID for bokning' }
+    const sample = JSON.stringify(teeTimes[0]).substring(0, 200)
+    return { found: true, teeTimes, error: `Inget slot-ID (slot: ${sample})` }
   }
 
   try {
-    const booked = await bookSlot(cookies, token, first.slotId, job.num_players, job.friend_golf_ids ?? [])
+    const booked = await bookSlot(cookies, token, first.slotId, job.friend_golf_ids ?? [], profile)
     if (booked) return { found: true, teeTimes, bookedTime: first.time }
     return { found: true, teeTimes, error: 'Hittade tider men bokning misslyckades' }
   } catch (err) {
