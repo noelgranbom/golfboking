@@ -14,11 +14,14 @@ export interface ScanResult {
 }
 
 const BASE = 'https://mingolf.golf.se'
+const BOOKING_BASE = 'https://book.sweetspot.io'
 
 function timeInRange(time: string, from: string, to: string): boolean {
   const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m }
   return toMin(time) >= toMin(from) && toMin(time) <= toMin(to)
 }
+
+function sig() { return AbortSignal.timeout(8000) }
 
 // Step 1: MinGolf login → session cookies
 async function loginMinGolf(golfId: string, password: string): Promise<string> {
@@ -27,6 +30,7 @@ async function loginMinGolf(golfId: string, password: string): Promise<string> {
     headers: { 'Content-Type': 'application/json; charset=utf-8' },
     body: JSON.stringify({ GolfId: golfId, Password: password }),
     redirect: 'manual',
+    signal: sig(),
   })
 
   if (res.status === 400) {
@@ -45,94 +49,79 @@ async function loginMinGolf(golfId: string, password: string): Promise<string> {
   return cookieStr
 }
 
-// Fetch the booking SPA bundle and extract API base URL candidates
-async function discoverApiBase(cookies: string): Promise<string> {
-  // Try known bundle path (may change on redeploy — we log what we find)
-  const bundleRes = await fetch(`${BASE}/bokning/`, {
-    headers: { Cookie: cookies, Accept: 'text/html' },
-    redirect: 'follow',
-  })
-  const html = await bundleRes.text().catch(() => '')
+// Step 1b: Visit /bokning/ to pick up booking-app session cookies
+// Only adds NEW cookie names — never overrides existing auth cookies
+async function enrichCookies(cookies: string): Promise<string> {
+  try {
+    const res = await fetch(`${BASE}/bokning/`, {
+      headers: { Cookie: cookies, Accept: 'text/html' },
+      redirect: 'follow',
+      signal: sig(),
+    })
+    const newCookies = res.headers.getSetCookie?.() ?? []
+    if (newCookies.length === 0) return cookies
 
-  // Extract JS bundle src from HTML
-  const bundleMatch = html.match(/src="(\/bokning\/assets\/[^"]+\.js)"/)
-  const bundlePath = bundleMatch?.[1] ?? '/bokning/assets/index.js'
+    const existingNames = new Set(cookies.split('; ').map((c) => c.split('=')[0]))
+    const extra = newCookies
+      .map((c) => c.split(';')[0])
+      .filter((c) => !existingNames.has(c.split('=')[0]))
+      .join('; ')
 
-  const jsRes = await fetch(`${BASE}${bundlePath}`, {
-    headers: { Cookie: cookies, Accept: '*/*' },
-    redirect: 'follow',
-  })
-  if (!jsRes.ok) throw new Error(`Bundle HTTP ${jsRes.status} (${bundlePath})`)
-  const js = await jsRes.text().catch(() => '')
-
-  // Search for baseURL/baseUrl config patterns
-  const baseUrlMatches = [
-    ...js.matchAll(/baseURL\s*[:=]\s*["'`]([^"'`]{3,60})["'`]/g),
-    ...js.matchAll(/baseUrl\s*[:=]\s*["'`]([^"'`]{3,60})["'`]/g),
-    ...js.matchAll(/base\s*:\s*["'`](\/[^"'`\s]{2,40})["'`]/g),
-  ].map(m => m[1])
-
-  // Search for https:// URLs that look like API servers (not CDN/analytics)
-  const httpsUrls = [...js.matchAll(/["'`](https:\/\/[a-z0-9.-]+(?:\/api)?[^"'`\s]{0,40})["'`]/gi)]
-    .map(m => m[1])
-    .filter(u => !u.includes('cookie') && !u.includes('consent') && !u.includes('google') && !u.includes('cdn'))
-
-  // Search for paths containing GolfBox keywords
-  const golfboxPaths = [...js.matchAll(/["'`](\/[a-z][^"'`\s]*(?:GolfBox|golfbox|StartTimes|Clubs)[^"'`\s]*)["'`]/g)]
-    .map(m => m[1])
-
-  const all = [...new Set([...baseUrlMatches, ...httpsUrls, ...golfboxPaths])]
-  throw new Error(`API-bas kandidater (${js.length}b): ${all.slice(0, 15).join(' | ') || 'inga hittades'}`)
+    return extra ? `${cookies}; ${extra}` : cookies
+  } catch {
+    return cookies
+  }
 }
 
-// Step 2: Exchange MinGolf session for GolfBox Bearer token
-// Try multiple known base URL candidates for the token endpoint
+// Step 2: Exchange MinGolf session for Bearer token
+// Tries multiple base URLs — /login/api returns 401 but /bokning/api may work
 async function getGolfBoxToken(cookies: string): Promise<string> {
-  const candidates = [
-    `${BASE}/login/api`,   // Same base as login — most likely
-    `${BASE}/bokning/api`, // Booking SPA's own backend
-    `${BASE}/api`,         // Simple prefix
-    BASE,                  // Root (confirmed 404, kept as last resort)
+  const bases = [
+    `${BASE}/login/api`,
+    `${BASE}/bokning/api`,
+    `${BASE}/api`,
+    BASE,
   ]
-
   const errors: string[] = []
 
-  for (const base of candidates) {
+  for (const base of bases) {
     for (const method of ['POST', 'GET'] as const) {
-      const res = await fetch(`${base}/Users/GolfBox/Token`, {
-        method,
-        headers: {
-          Cookie: cookies,
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        ...(method === 'POST' ? { body: '{}' } : {}),
-      })
+      try {
+        const res = await fetch(`${base}/Users/GolfBox/Token`, {
+          method,
+          headers: {
+            Cookie: cookies,
+            Accept: 'application/json',
+            ...(method === 'POST' ? { 'Content-Type': 'application/json' } : {}),
+          },
+          ...(method === 'POST' ? { body: '{}' } : {}),
+          signal: sig(),
+        })
 
-      const body = await res.text().catch(() => '')
-      if (res.status === 404) { errors.push(`${base}: 404`); break } // wrong base, try next
-      if (res.status === 401) { errors.push(`${base}: 401`); break } // wrong auth
-      if (!res.ok) { errors.push(`${base}: HTTP ${res.status}`); break }
+        const body = await res.text().catch(() => '')
+        if (res.status === 404 || res.status === 401) { errors.push(`${base}:${method}:${res.status}`); break }
+        if (!res.ok) { errors.push(`${base}:${method}:${res.status}`); break }
 
-      let data: unknown = body
-      try { data = JSON.parse(body) } catch { /* use raw */ }
+        let data: unknown = body
+        try { data = JSON.parse(body) } catch { /* use raw string */ }
 
-      const token = typeof data === 'string' ? data
-        : (data as Record<string, unknown>)?.token
-          ?? (data as Record<string, unknown>)?.access_token
-          ?? (data as Record<string, unknown>)?.accessToken
-          ?? (data as Record<string, unknown>)?.Token
-          ?? null
+        const token = typeof data === 'string' ? data
+          : (data as Record<string, unknown>)?.token
+            ?? (data as Record<string, unknown>)?.access_token
+            ?? (data as Record<string, unknown>)?.accessToken
+            ?? (data as Record<string, unknown>)?.Token
+            ?? null
 
-      if (typeof token !== 'string') {
-        errors.push(`${base}: token ej i svar: ${JSON.stringify(data).substring(0, 100)}`)
+        if (typeof token === 'string') return token
+        errors.push(`${base}:${method}:no-token`)
+      } catch {
+        errors.push(`${base}:${method}:network-err`)
         break
       }
-      return token
     }
   }
 
-  throw new Error(`GolfBox-token misslyckades. Testat: ${errors.join('; ')}`)
+  throw new Error(`Token: ${errors.join(', ')}`)
 }
 
 interface StartTimeSlot {
@@ -150,115 +139,105 @@ interface StartTimeSlot {
   id?: string
 }
 
-// Step 3: Fetch available tee times — try multiple base URL candidates including direct GolfBox
+// Step 3: Fetch available tee times
+// Uses GET at /bokning/api (mingolf proxy to Sweetspot) — requires enriched cookies from /bokning/
 async function fetchStartTimes(
   cookies: string,
   token: string,
   facilityId: string,
   date: string,
   numberOfPlayers: number
-): Promise<{ times: TeeTime[]; base: string }> {
-  const candidates = [
-    `${BASE}/login/api`,
-    `${BASE}/bokning/api`,
-    `${BASE}/api`,
-    BASE,
-    // GolfBox direct API candidates
-    'https://api.golfbox.dk',
-    'https://www.golfbox.dk/api',
-    'https://booking.golfbox.dk',
-    'https://golfbox.golf.se',
-    'https://api.golfmore.eu',
-  ]
+): Promise<TeeTime[]> {
+  const url = new URL(`${BASE}/bokning/api/Clubs/Courses/StartTimes/Overview`)
+  url.searchParams.set('CourseId', facilityId)
+  url.searchParams.set('FacilityId', facilityId)
+  url.searchParams.set('Date', date)
+  url.searchParams.set('NumberOfPlayers', String(numberOfPlayers))
 
-  const errors: string[] = []
+  const res = await fetch(url.toString(), {
+    method: 'GET',
+    headers: {
+      Cookie: cookies,
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+      Origin: BASE,
+      Referer: `${BASE}/bokning/`,
+    },
+    signal: sig(),
+  })
 
-  for (const base of candidates) {
-    const res = await fetch(`${base}/Clubs/Courses/StartTimes/Overview`, {
-      method: 'POST',
-      headers: {
-        Cookie: cookies,
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify({
-        CourseId: facilityId,
-        FacilityId: facilityId,
-        Date: date,
-        NumberOfPlayers: numberOfPlayers,
-      }),
-    })
+  const rawBody = await res.text().catch(() => '')
+  if (!res.ok) throw new Error(`StartTimes HTTP ${res.status}: ${rawBody.substring(0, 200)}`)
 
-    const rawBody = await res.text().catch(() => '')
-    if (res.status === 404) { errors.push(`${base}: 404`); continue }
-    if (!res.ok) {
-      errors.push(`${base}: HTTP ${res.status} ${rawBody.substring(0, 60)}`)
-      continue
-    }
+  let data: unknown
+  try { data = JSON.parse(rawBody) } catch {
+    throw new Error(`StartTimes ej JSON: ${rawBody.substring(0, 150)}`)
+  }
 
-    let data: unknown
-    try { data = JSON.parse(rawBody) } catch {
-      errors.push(`${base}: ej JSON`)
-      continue
-    }
+  const d = data as Record<string, unknown>
 
-    const d = data as Record<string, unknown>
-    const slots: StartTimeSlot[] = Array.isArray(data) ? data as StartTimeSlot[]
-      : (d?.startTimes ?? d?.StartTimes ?? d?.items ?? d?.Items ?? d?.slots ?? []) as StartTimeSlot[]
+  let slots: StartTimeSlot[] = []
 
-    const times = slots.map((s) => {
-      const rawTime = s.StartTime ?? s.startTime ?? s.Time ?? s.time ?? s.Date ?? ''
-      const match = rawTime.match(/(\d{2}:\d{2})/)
-      return {
-        time: match ? match[1] : rawTime,
-        availableSlots: s.AvailablePlayers ?? s.availablePlayers ?? s.FreeSlots ?? 4,
-        slotId: s.SlotId ?? s.slotId ?? s.Id ?? s.id,
+  if (Array.isArray(data)) {
+    slots = data as StartTimeSlot[]
+  } else {
+    const flat = d?.startTimes ?? d?.StartTimes ?? d?.items ?? d?.Items ?? d?.slots ?? d?.Slots
+    if (Array.isArray(flat)) {
+      slots = flat as StartTimeSlot[]
+    } else {
+      // MinGolf/Sweetspot Overview endpoint returns slots nested under courseSchedule
+      const schedule = d?.courseSchedule as Record<string, unknown> | undefined
+      if (schedule) {
+        const slotsInSchedule = schedule?.startTimes ?? schedule?.StartTimes ?? schedule?.slots
+          ?? schedule?.teeSheets ?? schedule?.teeSheet ?? schedule?.items
+        if (Array.isArray(slotsInSchedule)) {
+          slots = slotsInSchedule as StartTimeSlot[]
+        } else if (Array.isArray(schedule)) {
+          slots = schedule as unknown as StartTimeSlot[]
+        }
       }
-    }).filter((t) => t.time.match(/^\d{2}:\d{2}$/))
-
-    return { times, base }
+    }
   }
 
-  // All candidates failed — run bundle analysis to find the real URL
-  let bundleInfo = ''
-  try { await discoverApiBase(cookies) } catch (e) {
-    bundleInfo = e instanceof Error ? ` | Bundle: ${e.message}` : ''
-  }
-
-  throw new Error(`StartTimes misslyckades. Testat: ${errors.join('; ')}${bundleInfo}`)
+  return slots.map((s) => {
+    const rawTime = s.StartTime ?? s.startTime ?? s.Time ?? s.time ?? s.Date ?? ''
+    const match = rawTime.match(/(\d{2}:\d{2})/)
+    return {
+      time: match ? match[1] : rawTime,
+      availableSlots: s.AvailablePlayers ?? s.availablePlayers ?? s.FreeSlots ?? 4,
+      slotId: s.SlotId ?? s.slotId ?? s.Id ?? s.id,
+    }
+  }).filter((t) => t.time.match(/^\d{2}:\d{2}$/))
 }
 
 // Step 4: Book a slot
 async function bookSlot(
   cookies: string,
   token: string,
-  apiBase: string,
   slotId: string,
   numberOfPlayers: number,
   friendGolfIds: string[]
 ): Promise<boolean> {
-  const res = await fetch(`${apiBase}/Slot/Unlock/Many`, {
+  const res = await fetch(`${BOOKING_BASE}/Slot/Unlock/Many`, {
     method: 'POST',
     headers: {
       Cookie: cookies,
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
       Accept: 'application/json',
+      Origin: BASE,
+      Referer: `${BASE}/bokning/`,
     },
-    body: JSON.stringify({
-      SlotId: slotId,
-      NumberOfPlayers: numberOfPlayers,
-      Players: friendGolfIds,
-    }),
+    body: JSON.stringify({ SlotId: slotId, NumberOfPlayers: numberOfPlayers, Players: friendGolfIds }),
+    signal: sig(),
   })
 
-  if (res.status === 401) throw new Error('GolfBox-token ogiltig vid bokning')
+  if (res.status === 401) throw new Error('Token ogiltig vid bokning')
   return res.ok
 }
 
 export async function scanAndBook(job: Job): Promise<ScanResult> {
-  // 1. MinGolf login
+  // 1. Login
   let cookies: string
   try {
     cookies = await loginMinGolf(job.golf_id, job.golf_password)
@@ -266,27 +245,21 @@ export async function scanAndBook(job: Job): Promise<ScanResult> {
     return { found: false, teeTimes: [], error: err instanceof Error ? err.message : 'Inloggning misslyckades' }
   }
 
-  // 2. Get GolfBox token (tries multiple base URL candidates)
+  // 1b. Enrich cookies by visiting /bokning/
+  cookies = await enrichCookies(cookies)
+
+  // 2. Get Bearer token
   let token: string
   try {
     token = await getGolfBoxToken(cookies)
   } catch (err) {
-    // If token probe failed, also run bundle analysis so we can see what's in the JS
-    let bundleInfo = ''
-    try { await discoverApiBase(cookies) } catch (e) {
-      bundleInfo = e instanceof Error ? ` | ${e.message}` : ''
-    }
-    const msg = err instanceof Error ? err.message : 'GolfBox-token misslyckades'
-    return { found: false, teeTimes: [], error: msg + bundleInfo }
+    return { found: false, teeTimes: [], error: err instanceof Error ? err.message : 'Token misslyckades' }
   }
 
-  // 3. Fetch start times (tries multiple base URL candidates)
+  // 3. Fetch start times
   let allTimes: TeeTime[]
-  let workingBase: string
   try {
-    const result = await fetchStartTimes(cookies, token, job.club_id, job.date, job.num_players)
-    allTimes = result.times
-    workingBase = result.base
+    allTimes = await fetchStartTimes(cookies, token, job.club_id, job.date, job.num_players)
   } catch (err) {
     return { found: false, teeTimes: [], error: err instanceof Error ? err.message : 'Kunde inte hamta tider' }
   }
@@ -304,7 +277,7 @@ export async function scanAndBook(job: Job): Promise<ScanResult> {
   }
 
   try {
-    const booked = await bookSlot(cookies, token, workingBase, first.slotId, job.num_players, job.friend_golf_ids ?? [])
+    const booked = await bookSlot(cookies, token, first.slotId, job.num_players, job.friend_golf_ids ?? [])
     if (booked) return { found: true, teeTimes, bookedTime: first.time }
     return { found: true, teeTimes, error: 'Hittade tider men bokning misslyckades' }
   } catch (err) {
