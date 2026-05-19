@@ -21,8 +21,8 @@ export async function sendNotificationEmail(
       </div>`
     : ''
 
-  await getResend().emails.send({
-    from: 'Golfboking <noreply@golfboking.se>',
+  const { data, error } = await getResend().emails.send({
+    from: 'Golfboking <onboarding@resend.dev>',
     to: job.email,
     subject: `Ledig golftid hittad – ${job.club_name} ${job.date}`,
     html: `
@@ -37,11 +37,12 @@ export async function sendNotificationEmail(
       <small>Golfboking – automatisk golfbevakare</small>
     `,
   })
+  if (error) throw new Error(`Resend fel (${error.statusCode}): ${error.message}`)
 }
 
 export async function sendBookingConfirmationEmail(job: Job, bookedTime: string) {
-  await getResend().emails.send({
-    from: 'Golfboking <noreply@golfboking.se>',
+  const { error } = await getResend().emails.send({
+    from: 'Golfboking <onboarding@resend.dev>',
     to: job.email,
     subject: `Golftid bokad – ${job.club_name} ${job.date} kl. ${bookedTime}`,
     html: `
@@ -56,11 +57,12 @@ export async function sendBookingConfirmationEmail(job: Job, bookedTime: string)
       <small>Golfboking – automatisk golfbevakare</small>
     `,
   })
+  if (error) throw new Error(`Resend: ${error.message}`)
 }
 
 export async function sendErrorEmail(job: Job, errorMessage: string) {
   await getResend().emails.send({
-    from: 'Golfboking <noreply@golfboking.se>',
+    from: 'Golfboking <onboarding@resend.dev>',
     to: job.email,
     subject: `Golfboking – fel vid bevakning av ${job.club_name}`,
     html: `
