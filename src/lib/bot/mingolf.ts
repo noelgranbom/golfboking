@@ -263,13 +263,13 @@ async function fetchStartTimes(
 }
 
 // Step 4: Book a slot via MinGolf proxy
-// Flow: POST /Slot/{id}/Lock → POST /Slot/{id}/Bookings → DELETE /Slot/{id}/Lock
+// Flow: POST /Slot/{id}/Lock (with player array) → POST /Slot/{id}/Bookings → DELETE /Slot/{id}/Lock
+// The Lock step must receive the same slotBookings array so the server can match players.
 async function bookSlot(
   cookies: string,
   token: string,
   slotId: string,
   bookerGolfId: string,
-  numberOfPlayers: number,
   friendGolfIds: string[],
   profile: UserProfile | null
 ): Promise<boolean> {
@@ -282,19 +282,7 @@ async function bookSlot(
     Referer: `${BASE}/bokning/`,
   }
 
-  // 1. Lock the slot — send numberOfPlayers so the server reserves the right number of spots
-  const lockRes = await fetch(`${BASE}/bokning/api/Slot/${slotId}/Lock`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ numberOfPlayers }),
-    signal: sig(),
-  })
-  if (!lockRes.ok && lockRes.status !== 204) {
-    const b = await lockRes.text().catch(() => '')
-    throw new Error(`Lock HTTP ${lockRes.status}: ${b.substring(0, 200)}`)
-  }
-
-  // 2. Build slotBookings array — always use job.golf_id for booker (profile golfId as bonus)
+  // Build slotBookings first — needed for both Lock and Bookings
   const effectiveGolfId = profile?.golfId || bookerGolfId
   const makeBooking = (golfId: string, personId: string | undefined, isBooker: boolean) => ({
     slotBookingId: `new_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`,
@@ -314,7 +302,6 @@ async function bookSlot(
       golfId,
       isBooker,
       isGuest: false,
-      hashId: personId ?? golfId,
     },
     isNineHole: false,
     hasArrived: false,
@@ -325,7 +312,19 @@ async function bookSlot(
     ...friendGolfIds.map((golfId) => makeBooking(golfId, undefined, false)),
   ]
 
-  // 3. Book
+  // 1. Lock with player array so server reserves spots for exactly these players
+  const lockRes = await fetch(`${BASE}/bokning/api/Slot/${slotId}/Lock`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(slotBookings),
+    signal: sig(),
+  })
+  if (!lockRes.ok && lockRes.status !== 204) {
+    const b = await lockRes.text().catch(() => '')
+    throw new Error(`Lock HTTP ${lockRes.status}: ${b.substring(0, 200)}`)
+  }
+
+  // 2. Book
   const bookRes = await fetch(`${BASE}/bokning/api/Slot/${slotId}/Bookings`, {
     method: 'POST', headers,
     body: JSON.stringify(slotBookings),
@@ -333,7 +332,7 @@ async function bookSlot(
   })
   const bookBody = await bookRes.text().catch(() => '')
 
-  // 4. Always release lock
+  // 3. Always release lock
   await fetch(`${BASE}/bokning/api/Slot/${slotId}/Lock`, {
     method: 'DELETE', headers, signal: sig(),
   }).catch(() => {})
@@ -385,14 +384,17 @@ export async function scanAndBook(job: Job): Promise<ScanResult> {
     return { found: true, teeTimes, error: `Inget slot-ID (slot: ${sample})` }
   }
 
+  const profileStatus = profile ? `profil:${profile.golfId}` : 'profil:null'
+  const slotDiag = candidates.map((c) => `${c.time}[${c.slotId}]`).slice(0, 2).join(', ')
+
   const lastErrors: string[] = []
   for (const slot of candidates) {
     try {
-      const booked = await bookSlot(cookies, token, slot.slotId!, job.golf_id, job.num_players, job.friend_golf_ids ?? [], profile)
+      const booked = await bookSlot(cookies, token, slot.slotId!, job.golf_id, job.friend_golf_ids ?? [], profile)
       if (booked) return { found: true, teeTimes, bookedTime: slot.time }
     } catch (err) {
       lastErrors.push(`${slot.time}: ${err instanceof Error ? err.message : 'fel'}`)
     }
   }
-  return { found: true, teeTimes, error: `Bokning misslyckades för ${candidates.length} tider: ${lastErrors.join(' | ')}` }
+  return { found: true, teeTimes, error: `[${profileStatus} ${slotDiag}] Bokning misslyckades: ${lastErrors.slice(0, 2).join(' | ')}` }
 }
