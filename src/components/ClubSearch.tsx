@@ -41,10 +41,10 @@ export function ClubSearch({ value, onChange }: ClubSearchProps) {
           setOpen(true)
         }}
         onFocus={() => setOpen(true)}
-        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-gold transition-colors"
+        className="w-full bg-[var(--gb-bg-input)] border border-[var(--gb-border)] rounded-[var(--gb-radius-md)] px-4 py-3 text-[var(--gb-fg)] placeholder-[var(--gb-fg-soft)] focus:outline-none focus:border-[var(--gb-fairway)] transition-colors duration-[var(--gb-dur-fast)]"
       />
       {open && filtered.length > 0 && (
-        <div className="absolute z-50 w-full mt-1 bg-[#091a12] border border-white/10 rounded-xl overflow-hidden shadow-2xl max-h-64 overflow-y-auto">
+        <div className="absolute z-50 w-full mt-1 bg-[var(--gb-bg)] border border-[var(--gb-border)] rounded-[var(--gb-radius-xl)] overflow-hidden shadow-[var(--gb-shadow-lg)] max-h-64 overflow-y-auto">
           {filtered.map((club) => (
             <button
               key={club.id}
@@ -54,7 +54,7 @@ export function ClubSearch({ value, onChange }: ClubSearchProps) {
                 setQuery('')
                 setOpen(false)
               }}
-              className="w-full text-left px-4 py-2.5 hover:bg-gold/10 transition-colors text-sm text-white/80 hover:text-white"
+              className="w-full text-left px-4 py-2.5 hover:bg-[var(--gb-fairway)]/10 transition-colors duration-[var(--gb-dur-fast)] text-sm text-[var(--gb-fg-muted)] hover:text-[var(--gb-fg)]"
             >
               {club.name}
             </button>

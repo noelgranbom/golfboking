@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { Bell, Zap, TriangleAlert } from 'lucide-react'
 import { StepIndicator } from '@/components/StepIndicator'
 import { ClubSearch } from '@/components/ClubSearch'
 import { Dashboard } from '@/components/Dashboard'
@@ -106,70 +107,97 @@ export default function Home() {
 
   const today = new Date().toISOString().split('T')[0]
 
+  const inputClass =
+    'w-full bg-[var(--gb-bg-input)] border border-[var(--gb-border)] rounded-[var(--gb-radius-md)] px-4 py-3 text-[var(--gb-fg)] placeholder-[var(--gb-fg-soft)] focus:outline-none focus:border-[var(--gb-fairway)] transition-colors duration-[var(--gb-dur-fast)]'
+
+  const labelClass =
+    'block text-[11px] text-[var(--gb-fg-soft)] mb-1.5 uppercase tracking-[0.14em]'
+
+  const primaryBtn =
+    'w-full mt-2 bg-[var(--gb-fairway)] hover:bg-[var(--gb-fairway-hi)] disabled:bg-[var(--gb-bg-card)] disabled:text-[var(--gb-fg-faint)] text-[var(--gb-on-accent)] font-medium rounded-[var(--gb-radius-lg)] py-3 transition-colors duration-[var(--gb-dur-fast)]'
+
+  const secondaryBtn =
+    'flex-1 bg-[var(--gb-bg-card)] hover:bg-[var(--gb-bg-raised)] text-[var(--gb-fg-muted)] font-medium rounded-[var(--gb-radius-lg)] py-3 transition-colors duration-[var(--gb-dur-fast)]'
+
   return (
     <main className="min-h-screen py-10 px-4">
       <div className="max-w-lg mx-auto">
-        {/* Logo */}
+        {/* Logotyp */}
         <div className="text-center mb-10">
-          <h1 className="text-4xl font-semibold text-[#e8f1ea]" style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic', letterSpacing: '-0.5px' }}>Golfbooking</h1>
+          <h1
+            className="text-4xl text-[var(--gb-mist)]"
+            style={{
+              fontFamily: 'var(--gb-font-display)',
+              fontStyle: 'italic',
+              fontWeight: 500,
+              letterSpacing: '-0.02em',
+            }}
+          >
+            Golfbooking
+          </h1>
           <div className="flex items-center justify-center gap-3 my-2.5">
-            <div className="h-px flex-1 max-w-16 bg-gold/60" />
-            <div className="w-1 h-1 rounded-full bg-gold/60" />
-            <div className="h-px flex-1 max-w-16 bg-gold/60" />
+            <div className="h-px flex-1 max-w-16 bg-[var(--gb-brass)]/60" />
+            <div className="w-1 h-1 rounded-full bg-[var(--gb-brass)]/60" />
+            <div className="h-px flex-1 max-w-16 bg-[var(--gb-brass)]/60" />
           </div>
-          <p className="text-[#e8f1ea]/40 text-sm">Automatisk bevakare för MinGolf</p>
+          <p className="text-[var(--gb-fg-faint)] text-sm">Automatisk bevakare för MinGolf</p>
         </div>
 
-        {/* Form card */}
-        <div className="bg-white/3 border border-white/8 rounded-2xl p-6 mb-8">
+        {/* Formulärkort */}
+        <div className="bg-[var(--gb-bg-card)] border border-[var(--gb-border)] rounded-[var(--gb-radius-xl)] p-6 mb-8">
           <StepIndicator currentStep={step} steps={STEPS} />
 
-          {/* Step 1 — Login */}
+          {/* Steg 1 — Inloggning */}
           {step === 1 && (
             <div className="space-y-4">
-              <h2 className="text-white font-semibold text-lg mb-5">Dina uppgifter</h2>
+              <h2
+                className="text-[var(--gb-fg)] font-semibold text-xl mb-5"
+                style={{ fontFamily: 'var(--gb-font-display)' }}
+              >
+                Dina uppgifter
+              </h2>
 
               <div>
-                <label className="block text-xs text-white/40 mb-1.5 uppercase tracking-wide">E-post</label>
+                <label className={labelClass}>E-post</label>
                 <input
                   type="email"
                   placeholder="din@email.se"
                   value={form.email}
                   onChange={(e) => set('email', e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/20 focus:outline-none focus:border-gold transition-colors"
+                  className={inputClass}
                 />
               </div>
 
               <div>
-                <label className="block text-xs text-white/40 mb-1.5 uppercase tracking-wide">Golf-ID</label>
+                <label className={labelClass}>Golf-ID</label>
                 <input
                   type="text"
                   placeholder="123456"
                   value={form.golf_id}
                   onChange={(e) => set('golf_id', e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/20 focus:outline-none focus:border-gold transition-colors"
+                  className={inputClass}
                 />
               </div>
 
               <div>
-                <label className="block text-xs text-white/40 mb-1.5 uppercase tracking-wide">MinGolf-lösenord</label>
+                <label className={labelClass}>MinGolf-lösenord</label>
                 <div className="relative">
                   <input
                     type={showPassword ? 'text' : 'password'}
                     placeholder="••••••••"
                     value={form.golf_password}
                     onChange={(e) => set('golf_password', e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 pr-12 text-white placeholder-white/20 focus:outline-none focus:border-gold transition-colors"
+                    className={`${inputClass} pr-14`}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors text-sm"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--gb-fg-soft)] hover:text-[var(--gb-fg-muted)] transition-colors duration-[var(--gb-dur-fast)] text-sm"
                   >
                     {showPassword ? 'Dölj' : 'Visa'}
                   </button>
                 </div>
-                <p className="text-xs text-white/20 mt-1.5">
+                <p className="text-xs text-[var(--gb-fg-faint)] mt-1.5">
                   Sparas krypterat. Används enbart för att boka i ditt namn.
                 </p>
               </div>
@@ -177,67 +205,72 @@ export default function Home() {
               <button
                 onClick={() => setStep(2)}
                 disabled={!step1Valid}
-                className="w-full mt-2 bg-gold hover:bg-gold-light disabled:bg-white/10 disabled:text-white/20 text-black font-semibold rounded-xl py-3 transition-colors"
+                className={primaryBtn}
               >
                 Fortsätt
               </button>
             </div>
           )}
 
-          {/* Step 2 — Search settings */}
+          {/* Steg 2 — Sökinställningar */}
           {step === 2 && (
             <div className="space-y-4">
-              <h2 className="text-white font-semibold text-lg mb-5">Sök efter tid</h2>
+              <h2
+                className="text-[var(--gb-fg)] font-semibold text-xl mb-5"
+                style={{ fontFamily: 'var(--gb-font-display)' }}
+              >
+                Sök efter tid
+              </h2>
 
               <div>
-                <label className="block text-xs text-white/40 mb-1.5 uppercase tracking-wide">Golfklubb</label>
+                <label className={labelClass}>Golfklubb</label>
                 <ClubSearch value={form.club} onChange={(c) => set('club', c)} />
               </div>
 
               <div>
-                <label className="block text-xs text-white/40 mb-1.5 uppercase tracking-wide">Datum</label>
+                <label className={labelClass}>Datum</label>
                 <input
                   type="date"
                   min={today}
                   value={form.date}
                   onChange={(e) => set('date', e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-gold transition-colors"
+                  className={inputClass}
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-white/40 mb-1.5 uppercase tracking-wide">Från kl.</label>
+                  <label className={labelClass}>Från kl.</label>
                   <input
                     type="time"
                     value={form.time_from}
                     onChange={(e) => set('time_from', e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-gold transition-colors"
+                    className={inputClass}
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-white/40 mb-1.5 uppercase tracking-wide">Till kl.</label>
+                  <label className={labelClass}>Till kl.</label>
                   <input
                     type="time"
                     value={form.time_to}
                     onChange={(e) => set('time_to', e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-gold transition-colors"
+                    className={inputClass}
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs text-white/40 mb-1.5 uppercase tracking-wide">Antal spelare</label>
+                <label className={labelClass}>Antal spelare</label>
                 <div className="flex gap-2">
                   {[1, 2, 3, 4].map((n) => (
                     <button
                       key={n}
                       type="button"
                       onClick={() => set('num_players', n)}
-                      className={`flex-1 py-2.5 rounded-xl font-semibold transition-colors ${
+                      className={`flex-1 py-2.5 rounded-[var(--gb-radius-md)] font-medium transition-colors duration-[var(--gb-dur-fast)] ${
                         form.num_players === n
-                          ? 'bg-gold text-black'
-                          : 'bg-white/5 text-white/50 hover:bg-white/10'
+                          ? 'bg-[var(--gb-fairway)] text-[var(--gb-on-accent)]'
+                          : 'bg-[var(--gb-bg-card)] text-[var(--gb-fg-muted)] hover:bg-[var(--gb-bg-raised)]'
                       }`}
                     >
                       {n}
@@ -246,10 +279,10 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Friends */}
+              {/* Kompisbokare */}
               <div>
-                <label className="block text-xs text-white/40 mb-1.5 uppercase tracking-wide">
-                  Kompis Golf-ID <span className="text-white/20">(valfritt)</span>
+                <label className={labelClass}>
+                  Kompis Golf-ID <span className="text-[var(--gb-fg-faint)] normal-case tracking-normal">(valfritt)</span>
                 </label>
                 <div className="flex gap-2">
                   <input
@@ -258,12 +291,12 @@ export default function Home() {
                     value={friendInput}
                     onChange={(e) => setFriendInput(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && addFriend()}
-                    className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/20 focus:outline-none focus:border-gold transition-colors"
+                    className={`flex-1 bg-[var(--gb-bg-input)] border border-[var(--gb-border)] rounded-[var(--gb-radius-md)] px-4 py-3 text-[var(--gb-fg)] placeholder-[var(--gb-fg-soft)] focus:outline-none focus:border-[var(--gb-fairway)] transition-colors duration-[var(--gb-dur-fast)]`}
                   />
                   <button
                     type="button"
                     onClick={addFriend}
-                    className="bg-white/10 hover:bg-white/15 text-white rounded-xl px-4 transition-colors"
+                    className="bg-[var(--gb-bg-card)] hover:bg-[var(--gb-bg-raised)] text-[var(--gb-fg)] rounded-[var(--gb-radius-md)] px-4 transition-colors duration-[var(--gb-dur-fast)]"
                   >
                     +
                   </button>
@@ -273,10 +306,15 @@ export default function Home() {
                     {form.friend_golf_ids.map((id) => (
                       <span
                         key={id}
-                        className="flex items-center gap-1 bg-gold/10 text-gold text-xs px-3 py-1 rounded-full"
+                        className="flex items-center gap-1 bg-[var(--gb-brass)]/10 text-[var(--gb-brass)] text-xs px-3 py-1 rounded-[var(--gb-radius-pill)]"
                       >
                         {id}
-                        <button onClick={() => removeFriend(id)} className="hover:text-red-400 transition-colors ml-1">×</button>
+                        <button
+                          onClick={() => removeFriend(id)}
+                          className="hover:text-[var(--gb-error)] transition-colors duration-[var(--gb-dur-fast)] ml-1"
+                        >
+                          ×
+                        </button>
                       </span>
                     ))}
                   </div>
@@ -284,16 +322,13 @@ export default function Home() {
               </div>
 
               <div className="flex gap-3 mt-2">
-                <button
-                  onClick={() => setStep(1)}
-                  className="flex-1 bg-white/5 hover:bg-white/10 text-white/60 font-semibold rounded-xl py-3 transition-colors"
-                >
+                <button onClick={() => setStep(1)} className={secondaryBtn}>
                   Tillbaka
                 </button>
                 <button
                   onClick={() => setStep(3)}
                   disabled={!step2Valid}
-                  className="flex-1 bg-gold hover:bg-gold-light disabled:bg-white/10 disabled:text-white/20 text-black font-semibold rounded-xl py-3 transition-colors"
+                  className={`flex-1 bg-[var(--gb-fairway)] hover:bg-[var(--gb-fairway-hi)] disabled:bg-[var(--gb-bg-card)] disabled:text-[var(--gb-fg-faint)] text-[var(--gb-on-accent)] font-medium rounded-[var(--gb-radius-lg)] py-3 transition-colors duration-[var(--gb-dur-fast)]`}
                 >
                   Fortsätt
                 </button>
@@ -301,45 +336,52 @@ export default function Home() {
             </div>
           )}
 
-          {/* Step 3 — Mode + Activate */}
+          {/* Steg 3 — Läge + Aktivera */}
           {step === 3 && (
             <div className="space-y-4">
-              <h2 className="text-white font-semibold text-lg mb-5">Välj läge</h2>
+              <h2
+                className="text-[var(--gb-fg)] font-semibold text-xl mb-5"
+                style={{ fontFamily: 'var(--gb-font-display)' }}
+              >
+                Välj läge
+              </h2>
 
-              {/* Summary */}
-              <div className="bg-white/3 rounded-xl p-4 text-sm space-y-1.5 border border-white/8">
-                <p className="text-white/50">
-                  <span className="text-white/30">Klubb:</span>{' '}
-                  <span className="text-white">{form.club?.name}</span>
+              {/* Sammanfattning */}
+              <div className="bg-[var(--gb-bg-card)] rounded-[var(--gb-radius-xl)] p-4 text-sm space-y-1.5 border border-[var(--gb-border)]">
+                <p className="text-[var(--gb-fg-muted)]">
+                  <span className="text-[var(--gb-fg-soft)]">Klubb:</span>{' '}
+                  <span className="text-[var(--gb-fg)]">{form.club?.name}</span>
                 </p>
-                <p className="text-white/50">
-                  <span className="text-white/30">Datum:</span>{' '}
-                  <span className="text-white">{form.date}</span>
+                <p className="text-[var(--gb-fg-muted)]">
+                  <span className="text-[var(--gb-fg-soft)]">Datum:</span>{' '}
+                  <span className="text-[var(--gb-fg)]">{form.date}</span>
                 </p>
-                <p className="text-white/50">
-                  <span className="text-white/30">Tid:</span>{' '}
-                  <span className="text-white">{form.time_from}–{form.time_to}</span>
+                <p className="text-[var(--gb-fg-muted)]">
+                  <span className="text-[var(--gb-fg-soft)]">Tid:</span>{' '}
+                  <span className="text-[var(--gb-fg)]">{form.time_from}–{form.time_to}</span>
                 </p>
-                <p className="text-white/50">
-                  <span className="text-white/30">Spelare:</span>{' '}
-                  <span className="text-white">{form.num_players}</span>
+                <p className="text-[var(--gb-fg-muted)]">
+                  <span className="text-[var(--gb-fg-soft)]">Spelare:</span>{' '}
+                  <span className="text-[var(--gb-fg)]">{form.num_players}</span>
                 </p>
               </div>
 
-              {/* Mode selection */}
+              {/* Lägesval */}
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
                   onClick={() => set('mode', 'notify')}
-                  className={`p-4 rounded-xl border text-left transition-all ${
+                  className={`p-4 rounded-[var(--gb-radius-xl)] border text-left transition-all duration-[var(--gb-dur-base)] ${
                     form.mode === 'notify'
-                      ? 'border-gold bg-gold/10'
-                      : 'border-white/10 bg-white/3 hover:border-white/20'
+                      ? 'border-[var(--gb-fairway)] bg-[var(--gb-fairway)]/10'
+                      : 'border-[var(--gb-border)] bg-[var(--gb-bg-card)] hover:border-[var(--gb-border-strong)]'
                   }`}
                 >
-                  <div className="text-2xl mb-2">🔔</div>
-                  <div className="font-semibold text-white text-sm">Notis</div>
-                  <div className="text-white/40 text-xs mt-1">
+                  <div className="mb-2 text-[var(--gb-fg-muted)]">
+                    <Bell size={20} strokeWidth={1.75} />
+                  </div>
+                  <div className="font-medium text-[var(--gb-fg)] text-sm">Notis</div>
+                  <div className="text-[var(--gb-fg-soft)] text-xs mt-1">
                     Skickar mail när en tid hittas. Du bokar själv.
                   </div>
                 </button>
@@ -347,37 +389,37 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => set('mode', 'auto')}
-                  className={`p-4 rounded-xl border text-left transition-all ${
+                  className={`p-4 rounded-[var(--gb-radius-xl)] border text-left transition-all duration-[var(--gb-dur-base)] ${
                     form.mode === 'auto'
-                      ? 'border-gold bg-gold/10'
-                      : 'border-white/10 bg-white/3 hover:border-white/20'
+                      ? 'border-[var(--gb-fairway)] bg-[var(--gb-fairway)]/10'
+                      : 'border-[var(--gb-border)] bg-[var(--gb-bg-card)] hover:border-[var(--gb-border-strong)]'
                   }`}
                 >
-                  <div className="text-2xl mb-2">⚡</div>
-                  <div className="font-semibold text-white text-sm">Auto</div>
-                  <div className="text-white/40 text-xs mt-1">
+                  <div className="mb-2 text-[var(--gb-fg-muted)]">
+                    <Zap size={20} strokeWidth={1.75} />
+                  </div>
+                  <div className="font-medium text-[var(--gb-fg)] text-sm">Auto</div>
+                  <div className="text-[var(--gb-fg-soft)] text-xs mt-1">
                     Bokar automatiskt. Bekräftelse skickas via mail.
                   </div>
                 </button>
               </div>
 
               {form.mode === 'auto' && (
-                <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl px-4 py-3 text-xs text-yellow-300">
-                  ⚠ Auto-läge bokar direkt utan ytterligare bekräftelse från dig.
+                <div className="bg-[var(--gb-warning)]/10 border border-[var(--gb-warning)]/20 rounded-[var(--gb-radius-xl)] px-4 py-3 text-xs text-[var(--gb-warning)] flex items-start gap-2">
+                  <TriangleAlert size={14} strokeWidth={1.75} className="mt-0.5 shrink-0" />
+                  <span>Auto-läge bokar direkt utan ytterligare bekräftelse från dig.</span>
                 </div>
               )}
 
               <div className="flex gap-3 mt-2">
-                <button
-                  onClick={() => setStep(2)}
-                  className="flex-1 bg-white/5 hover:bg-white/10 text-white/60 font-semibold rounded-xl py-3 transition-colors"
-                >
+                <button onClick={() => setStep(2)} className={secondaryBtn}>
                   Tillbaka
                 </button>
                 <button
                   onClick={handleActivate}
                   disabled={loading}
-                  className="flex-1 bg-gold hover:bg-gold-light disabled:opacity-50 text-black font-semibold rounded-xl py-3 transition-colors"
+                  className={`flex-1 bg-[var(--gb-fairway)] hover:bg-[var(--gb-fairway-hi)] disabled:opacity-50 text-[var(--gb-on-accent)] font-medium rounded-[var(--gb-radius-lg)] py-3 transition-colors duration-[var(--gb-dur-fast)]`}
                 >
                   {loading ? 'Startar…' : 'Aktivera bevakning'}
                 </button>
@@ -386,10 +428,12 @@ export default function Home() {
           )}
         </div>
 
-        {/* Active jobs / dashboards */}
+        {/* Aktiva bevakningar */}
         {jobs.length > 0 && (
           <div className="space-y-4">
-            <h2 className="text-white/60 text-sm font-semibold uppercase tracking-wide">
+            <h2
+              className="text-[var(--gb-fg-muted)] text-sm font-medium uppercase tracking-[0.14em]"
+            >
               Aktiva bevakningar
             </h2>
             {jobs.map((job) => (

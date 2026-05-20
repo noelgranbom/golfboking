@@ -1,5 +1,7 @@
 'use client'
 
+import { Check } from 'lucide-react'
+
 interface StepIndicatorProps {
   currentStep: number
   steps: string[]
@@ -17,19 +19,23 @@ export function StepIndicator({ currentStep, steps }: StepIndicatorProps) {
           <div key={step} className="flex items-center">
             <div className="flex flex-col items-center gap-1">
               <div
-                className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-all ${
+                className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold transition-all duration-[var(--gb-dur-base)] ${
                   isCompleted
-                    ? 'bg-gold text-black'
+                    ? 'bg-[var(--gb-brass)] text-[var(--gb-ink)]'
                     : isActive
-                    ? 'bg-gold text-black ring-4 ring-gold/30'
-                    : 'bg-white/10 text-white/40'
+                    ? 'bg-[var(--gb-brass)] text-[var(--gb-ink)] ring-4 ring-[var(--gb-brass)]/30'
+                    : 'bg-[var(--gb-bg-card)] border border-[var(--gb-border)] text-[var(--gb-fg-soft)]'
                 }`}
               >
-                {isCompleted ? '✓' : step}
+                {isCompleted ? <Check size={16} strokeWidth={1.75} /> : step}
               </div>
               <span
                 className={`text-xs whitespace-nowrap ${
-                  isActive ? 'text-gold' : isCompleted ? 'text-gold-dim' : 'text-white/30'
+                  isActive
+                    ? 'text-[var(--gb-brass)]'
+                    : isCompleted
+                    ? 'text-[var(--gb-brass-deep)]'
+                    : 'text-[var(--gb-fg-soft)]'
                 }`}
               >
                 {label}
@@ -37,8 +43,8 @@ export function StepIndicator({ currentStep, steps }: StepIndicatorProps) {
             </div>
             {i < steps.length - 1 && (
               <div
-                className={`h-0.5 w-12 mx-1 mb-4 transition-all ${
-                  step < currentStep ? 'bg-gold' : 'bg-white/10'
+                className={`h-px w-12 mx-1 mb-4 transition-all duration-[var(--gb-dur-base)] ${
+                  step < currentStep ? 'bg-[var(--gb-brass)]' : 'bg-[var(--gb-border)]'
                 }`}
               />
             )}

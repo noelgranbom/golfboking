@@ -34,7 +34,6 @@ function timeInRange(time: string, from: string, to: string): boolean {
 
 function sig() { return AbortSignal.timeout(8000) }
 
-// Step 1: MinGolf login → session cookies
 async function loginMinGolf(golfId: string, password: string): Promise<string> {
   const res = await fetch(`${BASE}/login/api/Users/Login`, {
     method: 'POST',
@@ -60,8 +59,6 @@ async function loginMinGolf(golfId: string, password: string): Promise<string> {
   return cookieStr
 }
 
-// Step 1b: Visit /bokning/ to pick up booking-app session cookies + user profile
-// Only adds NEW cookie names — never overrides existing auth cookies
 async function enrichCookies(cookies: string): Promise<{ cookies: string; profile: UserProfile | null }> {
   try {
     const res = await fetch(`${BASE}/bokning/`, {
@@ -71,7 +68,6 @@ async function enrichCookies(cookies: string): Promise<{ cookies: string; profil
     })
     const html = await res.text().catch(() => '')
 
-    // Extract new cookies
     const newCookies = res.headers.getSetCookie?.() ?? []
     let enriched = cookies
     if (newCookies.length > 0) {
@@ -83,7 +79,6 @@ async function enrichCookies(cookies: string): Promise<{ cookies: string; profil
       if (extra) enriched = `${cookies}; ${extra}`
     }
 
-    // Extract user profile from __INITIAL_STATE__
     let profile: UserProfile | null = null
     try {
       const m = html.match(/window\.__INITIAL_STATE__\s*=\s*(\{[\s\S]+?\});\s*window\.__INITIAL_ROUTE__/)
@@ -111,8 +106,6 @@ async function enrichCookies(cookies: string): Promise<{ cookies: string; profil
   }
 }
 
-// Step 2: Exchange MinGolf session for Bearer token
-// Tries multiple base URLs — /login/api returns 401 but /bokning/api may work
 async function getGolfBoxToken(cookies: string): Promise<string> {
   const bases = [
     `${BASE}/login/api`,
@@ -189,14 +182,12 @@ interface StartTimeSlot {
   isBookable?: boolean
   Available?: boolean
   available?: boolean
-  // Sweetspot uses "availablity" (with typo) for nested availability object
   availablity?: NestedAvailability
   Availablity?: NestedAvailability
   availability?: NestedAvailability
   Availability?: NestedAvailability
 }
 
-// Convert an ISO UTC datetime string to Swedish local time (HH:MM) and date (YYYY-MM-DD)
 function parseSwedishTime(rawTime: string): { time: string; date: string } {
   if (rawTime.includes('T')) {
     try {
@@ -215,6 +206,9 @@ function parseSwedishTime(rawTime: string): { time: string; date: string } {
   return { time: match ? match[1] : rawTime, date: '' }
 }
 
+// Extracts slot list and the course UUID from an API response.
+// The UUID comes from courseSchedule fields only — NOT from favouriteClubs,
+// which always represents the user's home club, not the requested club.
 function extractSlots(data: unknown): { slots: StartTimeSlot[]; courseUUID: string } {
   const d = data as Record<string, unknown>
   let slots: StartTimeSlot[] = []
@@ -229,7 +223,7 @@ function extractSlots(data: unknown): { slots: StartTimeSlot[]; courseUUID: stri
     } else {
       const schedule = d?.courseSchedule as Record<string, unknown> | undefined
       if (schedule) {
-        // Extract course/facility UUID for fallback endpoint
+        // Extract the UUID of the club whose schedule was returned
         const cid = schedule?.courseId ?? schedule?.CourseId ?? schedule?.facilityId ?? schedule?.FacilityId
           ?? schedule?.clubId ?? schedule?.ClubId
         if (typeof cid === 'string' && cid.includes('-')) courseUUID = cid
@@ -241,12 +235,6 @@ function extractSlots(data: unknown): { slots: StartTimeSlot[]; courseUUID: stri
         } else if (Array.isArray(schedule)) {
           slots = schedule as unknown as StartTimeSlot[]
         }
-      }
-      // Also look for UUID in top-level favouriteClubs
-      const clubs = d?.favouriteClubs ?? d?.clubs
-      if (!courseUUID && Array.isArray(clubs) && clubs.length > 0) {
-        const clubId = (clubs[0] as Record<string, unknown>)?.id
-        if (typeof clubId === 'string' && clubId.includes('-')) courseUUID = clubId
       }
     }
   }
@@ -278,11 +266,110 @@ function slotsToTeeTimes(slots: StartTimeSlot[], date: string, numberOfPlayers: 
   .map(({ _bookable: _b, _avail: _a, _date: _dd, ...t }) => t)
 }
 
-// Step 3: Fetch available tee times for the requested date
+// Try to resolve a club's GolfBox UUID by searching MinGolf's API endpoints.
+// Used as a secondary lookup when the Overview response doesn't contain a UUID.
+async function resolveClubUUID(
+  cookies: string,
+  token: string,
+  clubId: string,
+  clubName: string
+): Promise<{ uuid: string; debugInfo: string }> {
+  const headers = {
+    Cookie: cookies,
+    Authorization: `Bearer ${token}`,
+    Accept: 'application/json',
+    Origin: BASE,
+    Referer: `${BASE}/bokning/`,
+  }
+
+  const isGUID = (s: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
+
+  const extractId = (c: unknown): string => {
+    const obj = c as Record<string, unknown>
+    for (const key of ['id', 'Id', 'facilityId', 'FacilityId', 'courseId', 'CourseId', 'clubId', 'ClubId']) {
+      const v = obj?.[key]
+      if (typeof v === 'string' && isGUID(v)) return v
+    }
+    return ''
+  }
+
+  const norm = (s: string) => s.toLowerCase()
+    .replace(/golfklubb|golfclub|golf\s*club|\bgk\b|\bgc\b|\bab\b/gi, '')
+    .replace(/[^a-zåäö0-9]+/g, ' ')
+    .trim()
+
+  const nameMatch = (candidate: string) => {
+    const cn = norm(candidate)
+    const rn = norm(clubName)
+    return cn === rn || cn.includes(rn) || rn.includes(cn)
+  }
+
+  const findInList = (data: unknown): string => {
+    const list = Array.isArray(data) ? data
+      : ((data as Record<string, unknown>)?.clubs
+        ?? (data as Record<string, unknown>)?.items
+        ?? (data as Record<string, unknown>)?.Clubs
+        ?? (data as Record<string, unknown>)?.facilities
+        ?? (data as Record<string, unknown>)?.Facilities
+        ?? (data as Record<string, unknown>)?.courses
+        ?? (data as Record<string, unknown>)?.Courses)
+    if (!Array.isArray(list) || list.length === 0) return ''
+    for (const item of list) {
+      const obj = item as Record<string, unknown>
+      const name = String(obj?.name ?? obj?.Name ?? obj?.clubName ?? obj?.ClubName ?? obj?.facilityName ?? '')
+      if (nameMatch(name)) {
+        const id = extractId(item)
+        if (id) return id
+      }
+    }
+    return ''
+  }
+
+  const tryFetch = async (url: string): Promise<unknown> => {
+    try {
+      const res = await fetch(url, { headers, signal: sig() })
+      if (!res.ok) return null
+      return await res.json().catch(() => null)
+    } catch { return null }
+  }
+
+  const encoded = encodeURIComponent(clubName)
+
+  for (const url of [
+    `${BASE}/bokning/api/Clubs`,
+    `${BASE}/bokning/api/Facilities`,
+    `${BASE}/bokning/api/Clubs?numberOfPlayers=1`,
+    `${BASE}/bokning/api/Clubs/search?q=${encoded}`,
+    `${BASE}/bokning/api/Clubs?search=${encoded}`,
+    `${BASE}/bokning/api/Clubs?name=${encoded}`,
+    `${BASE}/bokning/api/Clubs/${clubId}`,
+    `${BASE}/bokning/api/Facilities/${clubId}`,
+  ]) {
+    const data = await tryFetch(url)
+    if (!data) continue
+    const uuid = findInList(data) || extractId(data)
+    if (uuid) return { uuid, debugInfo: `resolve:${url.split('/api/')[1]?.split('?')[0]}` }
+  }
+
+  return { uuid: clubId, debugInfo: `resolve:failed` }
+}
+
+// Fetch available tee times for the correct club and date.
+//
+// The key problem: Overview always returns the user's HOME club UUID (ignoring
+// the facilityId parameter). We must resolve the correct UUID BEFORE calling
+// Overview, otherwise we'll always find and book the home club's slots.
+//
+// Flow:
+//   1. /bokning/api/Clubs (authenticated) → find correct UUID by club name
+//   2. If found: CourseSchedule with correct UUID → correct club + correct date
+//   3. If not found: Overview → extract whatever UUID it returns, log club name,
+//      try CourseSchedule as fallback (may still be wrong club)
 async function fetchStartTimes(
   cookies: string,
   token: string,
   facilityId: string,
+  clubName: string,
   date: string,
   numberOfPlayers: number
 ): Promise<{ times: TeeTime[]; rawDebug: string }> {
@@ -294,63 +381,172 @@ async function fetchStartTimes(
     Referer: `${BASE}/bokning/`,
   }
 
-  // Primary endpoint — Overview (may return today's slots regardless of date)
+  let rawDebug = `club="${clubName}" facilityId=${facilityId}`
+
+  // Name normaliser for fuzzy matching between clubs.ts names and MinGolf API names
+  const norm = (s: string) => s.toLowerCase()
+    .replace(/golfklubb|golfclub|golf\s*club|\bgk\b|\bgc\b|\bab\b/gi, '')
+    .replace(/[^a-zåäö0-9]+/g, ' ')
+    .trim()
+  const nameMatch = (a: string, b: string) => {
+    const na = norm(a), nb = norm(b)
+    return na === nb || na.includes(nb) || nb.includes(na)
+  }
+
+  const isGUID = (s: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
+
+  // Extract first GUID from a club-like object
+  const extractUUID = (obj: unknown): string => {
+    const o = obj as Record<string, unknown>
+    for (const k of ['id', 'Id', 'facilityId', 'FacilityId', 'courseId', 'CourseId', 'clubId', 'ClubId']) {
+      if (typeof o?.[k] === 'string' && isGUID(o[k] as string)) return o[k] as string
+    }
+    return ''
+  }
+
+  // Search a club-list response for a UUID matching clubName
+  const findUUIDInList = (data: unknown): string => {
+    const list = Array.isArray(data) ? data
+      : ((data as Record<string, unknown>)?.clubs
+        ?? (data as Record<string, unknown>)?.items
+        ?? (data as Record<string, unknown>)?.Clubs
+        ?? (data as Record<string, unknown>)?.facilities
+        ?? (data as Record<string, unknown>)?.Facilities
+        ?? (data as Record<string, unknown>)?.courses
+        ?? (data as Record<string, unknown>)?.Courses)
+    if (!Array.isArray(list)) return ''
+    for (const item of list) {
+      const o = item as Record<string, unknown>
+      const n = String(o?.name ?? o?.Name ?? o?.clubName ?? o?.ClubName ?? o?.facilityName ?? o?.FacilityName ?? '')
+      if (nameMatch(n, clubName)) {
+        const uuid = extractUUID(item)
+        if (uuid) return uuid
+      }
+    }
+    return ''
+  }
+
+  const tryFetch = async (url: string): Promise<unknown> => {
+    try {
+      const r = await fetch(url, { headers: commonHeaders, signal: sig() })
+      if (!r.ok) { rawDebug += ` ${url.split('/api/')[1]?.split('?')[0]}:${r.status}`; return null }
+      return await r.json().catch(() => null)
+    } catch { return null }
+  }
+
+  // ---------- Phase 1: Resolve correct UUID via authenticated clubs endpoint ----------
+  // /bokning/api/Clubs requires auth (returns 401 without it) — with auth it returns
+  // all bookable clubs with their real GolfBox UUIDs.
+  let correctUUID = ''
+  const enc = encodeURIComponent(clubName)
+
+  for (const url of [
+    `${BASE}/bokning/api/Clubs`,
+    `${BASE}/bokning/api/Clubs?numberOfPlayers=${numberOfPlayers}`,
+    `${BASE}/bokning/api/Clubs/search?q=${enc}`,
+    `${BASE}/bokning/api/Clubs?search=${enc}`,
+    `${BASE}/bokning/api/Clubs?facilityName=${enc}`,
+    `${BASE}/bokning/api/Courses`,
+    `${BASE}/bokning/api/Courses/search?q=${enc}`,
+    `${BASE}/bokning/api/Facilities`,
+    `${BASE}/bokning/api/Facilities/search?q=${enc}`,
+  ]) {
+    const data = await tryFetch(url)
+    if (!data) continue
+    // Log a snippet so we can see what structure the response has
+    if (!rawDebug.includes('clubsBody')) {
+      rawDebug += ` clubsBody:${JSON.stringify(data).substring(0, 300)}`
+    }
+    const uuid = findUUIDInList(data) || (isGUID(extractUUID(data)) ? extractUUID(data) : '')
+    if (uuid) { correctUUID = uuid; rawDebug += ` resolvedFrom:${url.split('/api/')[1]?.split('?')[0]}`; break }
+  }
+
+  rawDebug += correctUUID ? ` correctUUID=${correctUUID}` : ` correctUUID=UNRESOLVED`
+
+  // ---------- Phase 2: Use correct UUID for date-specific queries ----------
+  const tryDateEndpoints = async (uuid: string): Promise<TeeTime[] | null> => {
+    const urls = [
+      `${BASE}/bokning/api/Clubs/${uuid}/CourseSchedule?courseId=${uuid}&date=${date}&numberOfPlayers=${numberOfPlayers}`,
+      `${BASE}/bokning/api/Clubs/Courses/StartTimes?CourseId=${uuid}&FacilityId=${uuid}&Date=${date}&NumberOfPlayers=${numberOfPlayers}`,
+      `${BASE}/bokning/api/StartTimes?facilityId=${uuid}&date=${date}&numberOfPlayers=${numberOfPlayers}`,
+    ]
+    for (const url of urls) {
+      const data = await tryFetch(url)
+      if (!data) continue
+      const { slots } = extractSlots(data)
+      const times = slotsToTeeTimes(slots, date, numberOfPlayers)
+      if (times.length > 0) {
+        rawDebug += ` found:${times.length}@${url.split('/api/')[1]?.split('?')[0]}`
+        return times
+      }
+    }
+    return null
+  }
+
+  if (correctUUID) {
+    // Overview respects a valid club UUID and returns that club's course UUID in
+    // courseSchedule.courseId. CourseSchedule only works with course UUIDs, not club UUIDs.
+    const clubOverviewUrl = `${BASE}/bokning/api/Clubs/Courses/StartTimes/Overview?CourseId=${correctUUID}&FacilityId=${correctUUID}&Date=${date}&NumberOfPlayers=${numberOfPlayers}`
+    const overviewClubData = await tryFetch(clubOverviewUrl)
+    if (overviewClubData) {
+      const { slots: clubSlots, courseUUID } = extractSlots(overviewClubData)
+      rawDebug += ` clubOverviewUUID=${courseUUID || 'none'}`
+
+      if (courseUUID) {
+        const times = await tryDateEndpoints(courseUUID)
+        if (times) return { times, rawDebug }
+      }
+
+      const directTimes = slotsToTeeTimes(clubSlots, date, numberOfPlayers)
+      if (directTimes.length > 0) {
+        rawDebug += ` found:${directTimes.length}@clubOverview-direct`
+        return { times: directTimes, rawDebug }
+      }
+    }
+
+    rawDebug += ` allEndpoints:0`
+    return { times: [], rawDebug }
+  }
+
+  // ---------- Phase 3: Overview fallback — only reached when club UUID could not be resolved ----------
   const overviewUrl = new URL(`${BASE}/bokning/api/Clubs/Courses/StartTimes/Overview`)
   overviewUrl.searchParams.set('CourseId', facilityId)
   overviewUrl.searchParams.set('FacilityId', facilityId)
   overviewUrl.searchParams.set('Date', date)
   overviewUrl.searchParams.set('NumberOfPlayers', String(numberOfPlayers))
 
-  const res = await fetch(overviewUrl.toString(), {
-    method: 'GET', headers: commonHeaders, signal: sig(),
-  })
+  const res = await fetch(overviewUrl.toString(), { method: 'GET', headers: commonHeaders, signal: sig() })
   const rawBody = await res.text().catch(() => '')
   if (!res.ok) throw new Error(`StartTimes HTTP ${res.status}: ${rawBody.substring(0, 200)}`)
 
-  let data: unknown
-  try { data = JSON.parse(rawBody) } catch {
+  let overviewData: unknown
+  try { overviewData = JSON.parse(rawBody) } catch {
     throw new Error(`StartTimes ej JSON: ${rawBody.substring(0, 150)}`)
   }
 
-  const { slots: overviewSlots, courseUUID } = extractSlots(data)
-  const rawDebug = `uuid=${courseUUID} slot[0]=${JSON.stringify(overviewSlots[0] ?? {}).substring(0, 400)}`
+  const { slots: overviewSlots, courseUUID: overviewUUID } = extractSlots(overviewData)
+  const overviewD = overviewData as Record<string, unknown>
+  const schedObj = overviewD?.courseSchedule as Record<string, unknown> | undefined
+  const returnedClubName = String(schedObj?.name ?? schedObj?.Name ?? schedObj?.courseName
+    ?? schedObj?.CourseName ?? schedObj?.facilityName ?? schedObj?.FacilityName ?? '')
 
-  // Check if Overview returned the correct date
-  let times = slotsToTeeTimes(overviewSlots, date, numberOfPlayers)
+  rawDebug += ` overview:uuid=${overviewUUID || 'none'} returnedClub="${returnedClubName}" slots=${overviewSlots.length}`
 
-  if (times.length === 0 && overviewSlots.length > 0) {
-    // Overview returned wrong-date slots — try date-specific endpoints
-    const uuidToTry = courseUUID || facilityId
-    const fallbackUrls = [
-      // CourseSchedule endpoint (proper date-specific slots)
-      `${BASE}/bokning/api/Clubs/${uuidToTry}/CourseSchedule?courseId=${uuidToTry}&date=${date}&numberOfPlayers=${numberOfPlayers}`,
-      // StartTimes without /Overview
-      `${BASE}/bokning/api/Clubs/Courses/StartTimes?CourseId=${uuidToTry}&FacilityId=${uuidToTry}&Date=${date}&NumberOfPlayers=${numberOfPlayers}`,
-      // Generic StartTimes
-      `${BASE}/bokning/api/StartTimes?facilityId=${uuidToTry}&date=${date}&numberOfPlayers=${numberOfPlayers}`,
-    ]
-
-    for (const fallbackUrl of fallbackUrls) {
-      try {
-        const fbRes = await fetch(fallbackUrl, { method: 'GET', headers: commonHeaders, signal: sig() })
-        if (!fbRes.ok) continue
-        const fbData = await fbRes.json().catch(() => null)
-        if (!fbData) continue
-        const { slots: fbSlots } = extractSlots(fbData)
-        const fbTimes = slotsToTeeTimes(fbSlots, date, numberOfPlayers)
-        if (fbTimes.length > 0) {
-          return { times: fbTimes, rawDebug: `fallback=${fallbackUrl} slot[0]=${JSON.stringify(fbSlots[0] ?? {}).substring(0, 300)}` }
-        }
-      } catch { /* try next */ }
-    }
+  if (overviewUUID) {
+    const times = await tryDateEndpoints(overviewUUID)
+    if (times) return { times, rawDebug }
   }
 
-  return { times, rawDebug }
+  const overviewTimes = slotsToTeeTimes(overviewSlots, date, numberOfPlayers)
+  if (overviewTimes.length > 0) {
+    rawDebug += ` found:${overviewTimes.length}@Overview-direct`
+    return { times: overviewTimes, rawDebug }
+  }
+
+  rawDebug += ` allEndpoints:0`
+  return { times: [], rawDebug }
 }
 
-// Step 4: Book a slot via MinGolf proxy
-// Flow: POST /Slot/{id}/Lock (with player array) → POST /Slot/{id}/Bookings → DELETE /Slot/{id}/Lock
-// The Lock step must receive the same slotBookings array so the server can match players.
 async function bookSlot(
   cookies: string,
   token: string,
@@ -369,7 +565,6 @@ async function bookSlot(
     Referer: `${BASE}/bokning/`,
   }
 
-  // Build slotBookings — include date so the server books the right day
   const effectiveGolfId = profile?.golfId || bookerGolfId
   const makeBooking = (golfId: string, personId: string | undefined, isBooker: boolean) => ({
     slotBookingId: `new_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`,
@@ -400,11 +595,9 @@ async function bookSlot(
     ...friendGolfIds.map((golfId) => makeBooking(golfId, undefined, false)),
   ]
 
-  // Pass date as query param so the proxy books the correct date, not today
   const lockUrl = `${BASE}/bokning/api/Slot/${slotId}/Lock?date=${date}`
   const bookUrl = `${BASE}/bokning/api/Slot/${slotId}/Bookings?date=${date}`
 
-  // 1. Lock with player array + date
   const lockRes = await fetch(lockUrl, {
     method: 'POST',
     headers,
@@ -416,7 +609,6 @@ async function bookSlot(
     throw new Error(`Lock HTTP ${lockRes.status}: ${b.substring(0, 200)}`)
   }
 
-  // 2. Book with date
   const bookRes = await fetch(bookUrl, {
     method: 'POST', headers,
     body: JSON.stringify(slotBookings),
@@ -424,7 +616,6 @@ async function bookSlot(
   })
   const bookBody = await bookRes.text().catch(() => '')
 
-  // 3. Always release lock
   await fetch(lockUrl, { method: 'DELETE', headers, signal: sig() }).catch(() => {})
 
   if (bookRes.status === 401) throw new Error('Token ogiltig vid bokning')
@@ -433,7 +624,6 @@ async function bookSlot(
 }
 
 export async function scanAndBook(job: Job): Promise<ScanResult> {
-  // 1. Login
   let cookies: string
   try {
     cookies = await loginMinGolf(job.golf_id, job.golf_password)
@@ -441,11 +631,9 @@ export async function scanAndBook(job: Job): Promise<ScanResult> {
     return { found: false, teeTimes: [], error: err instanceof Error ? err.message : 'Inloggning misslyckades' }
   }
 
-  // 1b. Enrich cookies + get user profile from /bokning/
   const { cookies: enriched, profile } = await enrichCookies(cookies)
   cookies = enriched
 
-  // 2. Get Bearer token
   let token: string
   try {
     token = await getGolfBoxToken(cookies)
@@ -453,25 +641,21 @@ export async function scanAndBook(job: Job): Promise<ScanResult> {
     return { found: false, teeTimes: [], error: err instanceof Error ? err.message : 'Token misslyckades' }
   }
 
-  // 3. Fetch start times
   let allTimes: TeeTime[]
   let rawDebug = ''
   try {
-    const result = await fetchStartTimes(cookies, token, job.club_id, job.date, job.num_players)
+    const result = await fetchStartTimes(cookies, token, job.club_id, job.club_name, job.date, job.num_players)
     allTimes = result.times
     rawDebug = result.rawDebug
   } catch (err) {
-    return { found: false, teeTimes: [], error: err instanceof Error ? err.message : 'Kunde inte hamta tider' }
+    return { found: false, teeTimes: [], error: err instanceof Error ? err.message : 'Kunde inte hämta tider' }
   }
 
-  // 4. Filter by time range
   const teeTimes = allTimes.filter((t) => timeInRange(t.time, job.time_from, job.time_to))
 
-  if (teeTimes.length === 0) return { found: false, teeTimes: [] }
+  if (teeTimes.length === 0) return { found: false, teeTimes: [], debug: rawDebug }
   if (job.mode === 'notify') return { found: true, teeTimes }
 
-  // 5. Auto-book — try up to 10 slots spread across the time range (not just the first 5)
-  // Morning slots are often full; sampling throughout the day finds available times.
   const withId = teeTimes.filter((t) => t.slotId)
   const candidates = withId.length <= 10 ? withId : (() => {
     const step = Math.floor(withId.length / 10)
@@ -479,7 +663,7 @@ export async function scanAndBook(job: Job): Promise<ScanResult> {
   })()
   if (candidates.length === 0) {
     const sample = JSON.stringify(teeTimes[0]).substring(0, 200)
-    return { found: true, teeTimes, error: `Inget slot-ID (slot: ${sample})` }
+    return { found: true, teeTimes, error: `Inget slot-ID (slot: ${sample})`, debug: rawDebug }
   }
 
   const profileStatus = profile ? `profil:${profile.golfId}` : 'profil:null'

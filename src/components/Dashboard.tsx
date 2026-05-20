@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { Info, Check, X, TriangleAlert } from 'lucide-react'
 import type { Job, Log } from '@/lib/types'
 import { supabase } from '@/lib/supabase'
 
@@ -10,24 +11,24 @@ interface DashboardProps {
 }
 
 const LOG_COLORS: Record<string, string> = {
-  info: 'text-blue-300',
-  success: 'text-green-400',
-  error: 'text-red-400',
-  warning: 'text-yellow-400',
+  info:    'text-[var(--gb-info)]',
+  success: 'text-[var(--gb-success)]',
+  error:   'text-[var(--gb-error)]',
+  warning: 'text-[var(--gb-warning)]',
 }
 
-const LOG_ICONS: Record<string, string> = {
-  info: 'ℹ',
-  success: '✓',
-  error: '✗',
-  warning: '⚠',
+const LOG_ICONS: Record<string, React.ReactNode> = {
+  info:    <Info    size={12} strokeWidth={1.75} />,
+  success: <Check   size={12} strokeWidth={1.75} />,
+  error:   <X       size={12} strokeWidth={1.75} />,
+  warning: <TriangleAlert size={12} strokeWidth={1.75} />,
 }
 
 const STATUS_LABELS: Record<string, string> = {
-  active: 'Aktiv',
-  paused: 'Pausad',
+  active:    'Aktiv',
+  paused:    'Pausad',
   completed: 'Klar',
-  failed: 'Misslyckad',
+  failed:    'Misslyckad',
 }
 
 export function Dashboard({ job: initialJob, onDelete }: DashboardProps) {
@@ -47,7 +48,6 @@ export function Dashboard({ job: initialJob, onDelete }: DashboardProps) {
     fetchLogs()
   }, [fetchLogs])
 
-  // Subscribe to real-time log updates
   useEffect(() => {
     const channel = supabase
       .channel(`logs-${job.id}`)
@@ -63,7 +63,6 @@ export function Dashboard({ job: initialJob, onDelete }: DashboardProps) {
     return () => { supabase.removeChannel(channel) }
   }, [job.id])
 
-  // Subscribe to job status updates
   useEffect(() => {
     const channel = supabase
       .channel(`job-${job.id}`)
@@ -79,7 +78,6 @@ export function Dashboard({ job: initialJob, onDelete }: DashboardProps) {
     return () => { supabase.removeChannel(channel) }
   }, [job.id])
 
-  // Client-side scan polling (handles preview deploys where Vercel Crons don't run)
   useEffect(() => {
     if (job.status !== 'active') return
 
@@ -87,13 +85,11 @@ export function Dashboard({ job: initialJob, onDelete }: DashboardProps) {
       await fetch(`/api/jobs/${job.id}/scan`, { method: 'POST' })
     }
 
-    // Trigger immediately, then every 30s
     triggerScan()
     const interval = setInterval(triggerScan, 30_000)
     return () => clearInterval(interval)
   }, [job.id, job.status])
 
-  // Countdown to next scan
   useEffect(() => {
     if (!job.next_scan_at || job.status !== 'active') return
 
@@ -113,77 +109,95 @@ export function Dashboard({ job: initialJob, onDelete }: DashboardProps) {
   }
 
   const statusColor = {
-    active: 'text-gold',
-    paused: 'text-yellow-400',
-    completed: 'text-blue-400',
-    failed: 'text-red-400',
-  }[job.status] || 'text-white/50'
+    active:    'text-[var(--gb-brass)]',
+    paused:    'text-[var(--gb-warning)]',
+    completed: 'text-[var(--gb-info)]',
+    failed:    'text-[var(--gb-error)]',
+  }[job.status] || 'text-[var(--gb-fg-faint)]'
 
   return (
-    <div className="bg-white/5 rounded-2xl border border-white/10 overflow-hidden">
+    <div className="bg-[var(--gb-bg-card)] rounded-[var(--gb-radius-xl)] border border-[var(--gb-border)] overflow-hidden">
       {/* Header */}
-      <div className="p-5 border-b border-white/10 flex items-start justify-between gap-4">
+      <div className="p-5 border-b border-[var(--gb-border)] flex items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
             {job.status === 'active' && (
-              <span className="inline-block w-2 h-2 rounded-full bg-gold" style={{ animation: 'pulse-dot 1.5s ease-in-out infinite' }} />
+              <span
+                className="inline-block w-2 h-2 rounded-full bg-[var(--gb-brass)]"
+                style={{ animation: 'pulse-dot 1.5s ease-in-out infinite' }}
+              />
             )}
             <span className={`text-sm font-semibold ${statusColor}`}>
               {STATUS_LABELS[job.status]}
             </span>
-            <span className="text-white/20">•</span>
-            <span className="text-white/50 text-sm capitalize">{job.mode === 'notify' ? 'Notis-läge' : 'Auto-läge'}</span>
+            <span className="text-[var(--gb-fg-faint)]">·</span>
+            <span className="text-[var(--gb-fg-soft)] text-sm capitalize">
+              {job.mode === 'notify' ? 'Notis' : 'Auto'}
+            </span>
           </div>
-          <h3 className="text-white font-semibold text-lg">{job.club_name}</h3>
-          <p className="text-white/50 text-sm">
+          <h3
+            className="text-[var(--gb-fg)] font-semibold text-lg"
+            style={{ fontFamily: 'var(--gb-font-display)' }}
+          >
+            {job.club_name}
+          </h3>
+          <p className="text-[var(--gb-fg-muted)] text-sm">
             {job.date} kl. {job.time_from.substring(0, 5)}–{job.time_to.substring(0, 5)} · {job.num_players} spelare
           </p>
           {job.friend_golf_ids?.length > 0 && (
-            <p className="text-white/30 text-xs mt-1">
+            <p className="text-[var(--gb-fg-soft)] text-xs mt-1">
               Medspelare: {job.friend_golf_ids.join(', ')}
             </p>
           )}
         </div>
         <button
           onClick={handleDelete}
-          className="text-white/20 hover:text-red-400 transition-colors text-xl leading-none p-1"
+          className="text-[var(--gb-fg-faint)] hover:text-[var(--gb-error)] transition-colors duration-[var(--gb-dur-fast)] text-xl leading-none p-1"
           title="Ta bort"
         >
-          ×
+          <X size={18} strokeWidth={1.75} />
         </button>
       </div>
 
-      {/* Booking confirmation */}
+      {/* Bokningsbekräftelse */}
       {job.booked_tee_time && (
-        <div className="px-5 py-3 bg-gold/10 border-b border-gold/20 flex items-center gap-2">
-          <p className="text-gold-light text-sm font-medium">
+        <div className="px-5 py-3 bg-[var(--gb-brass)]/10 border-b border-[var(--gb-brass)]/20 flex items-center gap-2">
+          <p className="text-[var(--gb-brass)] text-sm font-medium">
             Bokad tid: {job.booked_tee_time} — Bekräftelse skickad till {job.email}
           </p>
         </div>
       )}
 
-      {/* Countdown */}
+      {/* Nedräkning */}
       {job.status === 'active' && countdown !== null && (
-        <div className="px-5 py-2 bg-white/3 border-b border-white/5 flex items-center gap-2 text-xs text-white/40">
+        <div className="px-5 py-2 bg-[var(--gb-bg-card)] border-b border-[var(--gb-border)] flex items-center gap-2 text-xs text-[var(--gb-fg-faint)]">
           <span>Nästa skanning om</span>
-          <span className="font-mono text-gold">{countdown}s</span>
+          <span
+            className="font-[family-name:var(--gb-font-mono)] text-[var(--gb-brass)]"
+          >
+            {countdown}s
+          </span>
         </div>
       )}
 
-      {/* Log */}
-      <div className="p-4 max-h-64 overflow-y-auto space-y-1 font-mono text-xs">
+      {/* Logg */}
+      <div className="p-4 max-h-64 overflow-y-auto space-y-1 font-[family-name:var(--gb-font-mono)] text-xs">
         {logs.length === 0 ? (
-          <p className="text-white/20 text-center py-4">Inga loggar ännu…</p>
+          <p className="text-[var(--gb-fg-faint)] text-center py-4">Inga loggar ännu…</p>
         ) : (
           logs.map((log) => (
             <div key={log.id} className="flex gap-2 items-start">
-              <span className="text-white/20 shrink-0">
-                {new Date(log.created_at).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              <span className="text-[var(--gb-fg-faint)] shrink-0">
+                {new Date(log.created_at).toLocaleTimeString('sv-SE', {
+                  hour: '2-digit', minute: '2-digit', second: '2-digit',
+                })}
               </span>
-              <span className={`shrink-0 ${LOG_COLORS[log.level] || 'text-white/50'}`}>
-                {LOG_ICONS[log.level]}
+              <span className={`shrink-0 mt-px ${LOG_COLORS[log.level] || 'text-[var(--gb-fg-soft)]'}`}>
+                {LOG_ICONS[log.level] ?? <Info size={12} strokeWidth={1.75} />}
               </span>
-              <span className={LOG_COLORS[log.level] || 'text-white/50'}>{log.message}</span>
+              <span className={LOG_COLORS[log.level] || 'text-[var(--gb-fg-soft)]'}>
+                {log.message}
+              </span>
             </div>
           ))
         )}
