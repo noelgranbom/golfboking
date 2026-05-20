@@ -278,7 +278,8 @@ async function bookSlot(
   slotId: string,
   bookerGolfId: string,
   friendGolfIds: string[],
-  profile: UserProfile | null
+  profile: UserProfile | null,
+  date: string
 ): Promise<boolean> {
   const headers = {
     Cookie: cookies,
@@ -289,12 +290,13 @@ async function bookSlot(
     Referer: `${BASE}/bokning/`,
   }
 
-  // Build slotBookings first — needed for both Lock and Bookings
+  // Build slotBookings — include date so the server books the right day
   const effectiveGolfId = profile?.golfId || bookerGolfId
   const makeBooking = (golfId: string, personId: string | undefined, isBooker: boolean) => ({
     slotBookingId: `new_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`,
     state: 'Added',
     hasBeenValidated: false,
+    date,
     player: {
       ...(profile && isBooker ? {
         personId: profile.personId,
@@ -319,8 +321,12 @@ async function bookSlot(
     ...friendGolfIds.map((golfId) => makeBooking(golfId, undefined, false)),
   ]
 
-  // 1. Lock with player array so server reserves spots for exactly these players
-  const lockRes = await fetch(`${BASE}/bokning/api/Slot/${slotId}/Lock`, {
+  // Pass date as query param so the proxy books the correct date, not today
+  const lockUrl = `${BASE}/bokning/api/Slot/${slotId}/Lock?date=${date}`
+  const bookUrl = `${BASE}/bokning/api/Slot/${slotId}/Bookings?date=${date}`
+
+  // 1. Lock with player array + date
+  const lockRes = await fetch(lockUrl, {
     method: 'POST',
     headers,
     body: JSON.stringify(slotBookings),
@@ -331,8 +337,8 @@ async function bookSlot(
     throw new Error(`Lock HTTP ${lockRes.status}: ${b.substring(0, 200)}`)
   }
 
-  // 2. Book
-  const bookRes = await fetch(`${BASE}/bokning/api/Slot/${slotId}/Bookings`, {
+  // 2. Book with date
+  const bookRes = await fetch(bookUrl, {
     method: 'POST', headers,
     body: JSON.stringify(slotBookings),
     signal: sig(),
@@ -340,9 +346,7 @@ async function bookSlot(
   const bookBody = await bookRes.text().catch(() => '')
 
   // 3. Always release lock
-  await fetch(`${BASE}/bokning/api/Slot/${slotId}/Lock`, {
-    method: 'DELETE', headers, signal: sig(),
-  }).catch(() => {})
+  await fetch(lockUrl, { method: 'DELETE', headers, signal: sig() }).catch(() => {})
 
   if (bookRes.status === 401) throw new Error('Token ogiltig vid bokning')
   if (!bookRes.ok) throw new Error(`Bokning HTTP ${bookRes.status}: ${bookBody.substring(0, 300)}`)
@@ -405,8 +409,8 @@ export async function scanAndBook(job: Job): Promise<ScanResult> {
   const lastErrors: string[] = []
   for (const slot of candidates) {
     try {
-      const booked = await bookSlot(cookies, token, slot.slotId!, job.golf_id, job.friend_golf_ids ?? [], profile)
-      if (booked) return { found: true, teeTimes, bookedTime: slot.time }
+      const booked = await bookSlot(cookies, token, slot.slotId!, job.golf_id, job.friend_golf_ids ?? [], profile, job.date)
+      if (booked) return { found: true, teeTimes, bookedTime: slot.time, debug: rawDebug }
     } catch (err) {
       lastErrors.push(`${slot.time}: ${err instanceof Error ? err.message : 'fel'}`)
     }
