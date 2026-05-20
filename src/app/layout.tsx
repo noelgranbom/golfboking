@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Golfboking – Automatisk golfbevakare',
+  title: 'Golfbooking – Automatisk golfbevakare',
   description: 'Automatisk bevakare av lediga golftider på MinGolf',
 }
 

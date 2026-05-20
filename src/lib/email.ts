@@ -22,7 +22,7 @@ export async function sendNotificationEmail(
     : ''
 
   const { data, error } = await getResend().emails.send({
-    from: 'Golfboking <onboarding@resend.dev>',
+    from: 'Golfbooking <onboarding@resend.dev>',
     to: job.email,
     subject: `Ledig golftid hittad – ${job.club_name} ${job.date}`,
     html: `
@@ -34,7 +34,7 @@ export async function sendNotificationEmail(
       ${aiBlock}
       <p>Logga in på <a href="https://mingolf.golf.se">MinGolf</a> för att boka.</p>
       <hr>
-      <small>Golfboking – automatisk golfbevakare</small>
+      <small>Golfbooking – automatisk golfbevakare</small>
     `,
   })
   if (error) throw new Error(`Resend fel (${error.statusCode}): ${error.message}`)
@@ -42,7 +42,7 @@ export async function sendNotificationEmail(
 
 export async function sendBookingConfirmationEmail(job: Job, bookedTime: string) {
   const { error } = await getResend().emails.send({
-    from: 'Golfboking <onboarding@resend.dev>',
+    from: 'Golfbooking <onboarding@resend.dev>',
     to: job.email,
     subject: `Golftid bokad – ${job.club_name} ${job.date} kl. ${bookedTime}`,
     html: `
@@ -54,7 +54,7 @@ export async function sendBookingConfirmationEmail(job: Job, bookedTime: string)
       ${job.friend_golf_ids?.length ? `<p><strong>Medspelare:</strong> ${job.friend_golf_ids.join(', ')}</p>` : ''}
       <p>Kontrolera din bokning på <a href="https://mingolf.golf.se">MinGolf</a>.</p>
       <hr>
-      <small>Golfboking – automatisk golfbevakare</small>
+      <small>Golfbooking – automatisk golfbevakare</small>
     `,
   })
   if (error) throw new Error(`Resend: ${error.message}`)
@@ -62,15 +62,15 @@ export async function sendBookingConfirmationEmail(job: Job, bookedTime: string)
 
 export async function sendErrorEmail(job: Job, errorMessage: string) {
   await getResend().emails.send({
-    from: 'Golfboking <onboarding@resend.dev>',
+    from: 'Golfbooking <onboarding@resend.dev>',
     to: job.email,
-    subject: `Golfboking – fel vid bevakning av ${job.club_name}`,
+    subject: `Golfbooking – fel vid bevakning av ${job.club_name}`,
     html: `
       <h2>Ett fel uppstod</h2>
       <p>Bevakningen för ${job.club_name} ${job.date} stötte på ett problem:</p>
       <pre>${errorMessage}</pre>
       <hr>
-      <small>Golfboking – automatisk golfbevakare</small>
+      <small>Golfbooking – automatisk golfbevakare</small>
     `,
   })
 }

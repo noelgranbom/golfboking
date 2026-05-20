@@ -111,8 +111,7 @@ export default function Home() {
       <div className="max-w-lg mx-auto">
         {/* Logo */}
         <div className="text-center mb-10">
-          <div className="text-5xl mb-3">⛳</div>
-          <h1 className="text-4xl font-semibold text-[#e8f1ea]" style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic', letterSpacing: '-0.5px' }}>Golfboking</h1>
+          <h1 className="text-4xl font-semibold text-[#e8f1ea]" style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic', letterSpacing: '-0.5px' }}>Golfbooking</h1>
           <div className="flex items-center justify-center gap-3 my-2.5">
             <div className="h-px flex-1 max-w-16 bg-gold/60" />
             <div className="w-1 h-1 rounded-full bg-gold/60" />

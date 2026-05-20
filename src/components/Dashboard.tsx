@@ -156,7 +156,6 @@ export function Dashboard({ job: initialJob, onDelete }: DashboardProps) {
       {/* Booking confirmation */}
       {job.booked_tee_time && (
         <div className="px-5 py-3 bg-gold/10 border-b border-gold/20 flex items-center gap-2">
-          <span className="text-gold text-lg">⛳</span>
           <p className="text-gold-light text-sm font-medium">
             Bokad tid: {job.booked_tee_time} — Bekräftelse skickad till {job.email}
           </p>
