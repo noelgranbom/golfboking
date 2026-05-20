@@ -29,6 +29,10 @@ export async function processJob(job: Job, supabase: SupabaseClient) {
       next_scan_at: nextScanAt,
     }).eq('id', job.id)
 
+    if (result.debug) {
+      await addLog(supabase, job.id, 'info', `DEBUG: ${result.debug}`)
+    }
+
     if (result.error) {
       await addLog(supabase, job.id, 'error', `Fel: ${result.error}`)
       return

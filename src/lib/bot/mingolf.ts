@@ -11,6 +11,7 @@ export interface ScanResult {
   teeTimes: TeeTime[]
   bookedTime?: string
   error?: string
+  debug?: string
 }
 
 const BASE = 'https://mingolf.golf.se'
@@ -191,7 +192,7 @@ async function fetchStartTimes(
   facilityId: string,
   date: string,
   numberOfPlayers: number
-): Promise<TeeTime[]> {
+): Promise<{ times: TeeTime[]; rawDebug: string }> {
   const url = new URL(`${BASE}/bokning/api/Clubs/Courses/StartTimes/Overview`)
   url.searchParams.set('CourseId', facilityId)
   url.searchParams.set('FacilityId', facilityId)
@@ -243,7 +244,11 @@ async function fetchStartTimes(
     }
   }
 
-  return slots.map((s) => {
+  const rawDebug = slots.length > 0
+    ? `slot[0]=${JSON.stringify(slots[0]).substring(0, 400)}`
+    : `no-slots body=${rawBody.substring(0, 200)}`
+
+  const times = slots.map((s) => {
     const rawTime = s.StartTime ?? s.startTime ?? s.Time ?? s.time ?? s.Date ?? ''
     const match = rawTime.match(/(\d{2}:\d{2})/)
     const avail = s.AvailablePlayers ?? s.availablePlayers ?? s.FreeSlots ?? s.freeSlots ?? null
@@ -260,6 +265,8 @@ async function fetchStartTimes(
   .filter((t) => t._bookable !== false)
   .filter((t) => t._avail === null || t._avail >= numberOfPlayers)
   .map(({ _bookable: _b, _avail: _a, ...t }) => t)
+
+  return { times, rawDebug }
 }
 
 // Step 4: Book a slot via MinGolf proxy
@@ -365,8 +372,11 @@ export async function scanAndBook(job: Job): Promise<ScanResult> {
 
   // 3. Fetch start times
   let allTimes: TeeTime[]
+  let rawDebug = ''
   try {
-    allTimes = await fetchStartTimes(cookies, token, job.club_id, job.date, job.num_players)
+    const result = await fetchStartTimes(cookies, token, job.club_id, job.date, job.num_players)
+    allTimes = result.times
+    rawDebug = result.rawDebug
   } catch (err) {
     return { found: false, teeTimes: [], error: err instanceof Error ? err.message : 'Kunde inte hamta tider' }
   }
@@ -396,5 +406,10 @@ export async function scanAndBook(job: Job): Promise<ScanResult> {
       lastErrors.push(`${slot.time}: ${err instanceof Error ? err.message : 'fel'}`)
     }
   }
-  return { found: true, teeTimes, error: `[${profileStatus} ${slotDiag}] Bokning misslyckades: ${lastErrors.slice(0, 2).join(' | ')}` }
+  return {
+    found: true,
+    teeTimes,
+    debug: rawDebug,
+    error: `[${profileStatus} ${slotDiag}] Bokning misslyckades: ${lastErrors.slice(0, 2).join(' | ')}`,
+  }
 }
