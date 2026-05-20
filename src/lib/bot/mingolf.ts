@@ -162,6 +162,13 @@ async function getGolfBoxToken(cookies: string): Promise<string> {
   throw new Error(`Token: ${errors.join(', ')}`)
 }
 
+interface NestedAvailability {
+  bookable?: boolean
+  Bookable?: boolean
+  availableSlots?: number
+  AvailableSlots?: number
+}
+
 interface StartTimeSlot {
   StartTime?: string
   startTime?: string
@@ -182,46 +189,36 @@ interface StartTimeSlot {
   isBookable?: boolean
   Available?: boolean
   available?: boolean
+  // Sweetspot uses "availablity" (with typo) for nested availability object
+  availablity?: NestedAvailability
+  Availablity?: NestedAvailability
+  availability?: NestedAvailability
+  Availability?: NestedAvailability
 }
 
-// Step 3: Fetch available tee times
-// Uses GET at /bokning/api (mingolf proxy to Sweetspot) — requires enriched cookies from /bokning/
-async function fetchStartTimes(
-  cookies: string,
-  token: string,
-  facilityId: string,
-  date: string,
-  numberOfPlayers: number
-): Promise<{ times: TeeTime[]; rawDebug: string }> {
-  const url = new URL(`${BASE}/bokning/api/Clubs/Courses/StartTimes/Overview`)
-  url.searchParams.set('CourseId', facilityId)
-  url.searchParams.set('FacilityId', facilityId)
-  url.searchParams.set('Date', date)
-  url.searchParams.set('NumberOfPlayers', String(numberOfPlayers))
-
-  const res = await fetch(url.toString(), {
-    method: 'GET',
-    headers: {
-      Cookie: cookies,
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/json',
-      Origin: BASE,
-      Referer: `${BASE}/bokning/`,
-    },
-    signal: sig(),
-  })
-
-  const rawBody = await res.text().catch(() => '')
-  if (!res.ok) throw new Error(`StartTimes HTTP ${res.status}: ${rawBody.substring(0, 200)}`)
-
-  let data: unknown
-  try { data = JSON.parse(rawBody) } catch {
-    throw new Error(`StartTimes ej JSON: ${rawBody.substring(0, 150)}`)
+// Convert an ISO UTC datetime string to Swedish local time (HH:MM) and date (YYYY-MM-DD)
+function parseSwedishTime(rawTime: string): { time: string; date: string } {
+  if (rawTime.includes('T')) {
+    try {
+      const d = new Date(rawTime)
+      const time = d.toLocaleTimeString('sv-SE', {
+        timeZone: 'Europe/Stockholm',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      })
+      const date = d.toLocaleDateString('sv-SE', { timeZone: 'Europe/Stockholm' })
+      return { time, date }
+    } catch { /* fall through */ }
   }
+  const match = rawTime.match(/(\d{2}:\d{2})/)
+  return { time: match ? match[1] : rawTime, date: '' }
+}
 
+function extractSlots(data: unknown): { slots: StartTimeSlot[]; courseUUID: string } {
   const d = data as Record<string, unknown>
-
   let slots: StartTimeSlot[] = []
+  let courseUUID = ''
 
   if (Array.isArray(data)) {
     slots = data as StartTimeSlot[]
@@ -230,9 +227,13 @@ async function fetchStartTimes(
     if (Array.isArray(flat)) {
       slots = flat as StartTimeSlot[]
     } else {
-      // MinGolf/Sweetspot Overview endpoint returns slots nested under courseSchedule
       const schedule = d?.courseSchedule as Record<string, unknown> | undefined
       if (schedule) {
+        // Extract course/facility UUID for fallback endpoint
+        const cid = schedule?.courseId ?? schedule?.CourseId ?? schedule?.facilityId ?? schedule?.FacilityId
+          ?? schedule?.clubId ?? schedule?.ClubId
+        if (typeof cid === 'string' && cid.includes('-')) courseUUID = cid
+
         const slotsInSchedule = schedule?.startTimes ?? schedule?.StartTimes ?? schedule?.slots
           ?? schedule?.teeSheets ?? schedule?.teeSheet ?? schedule?.items
         if (Array.isArray(slotsInSchedule)) {
@@ -241,30 +242,108 @@ async function fetchStartTimes(
           slots = schedule as unknown as StartTimeSlot[]
         }
       }
+      // Also look for UUID in top-level favouriteClubs
+      const clubs = d?.favouriteClubs ?? d?.clubs
+      if (!courseUUID && Array.isArray(clubs) && clubs.length > 0) {
+        const clubId = (clubs[0] as Record<string, unknown>)?.id
+        if (typeof clubId === 'string' && clubId.includes('-')) courseUUID = clubId
+      }
     }
   }
+  return { slots, courseUUID }
+}
 
-  const rawDebug = slots.length > 0
-    ? `slot[0]=${JSON.stringify(slots[0]).substring(0, 400)}`
-    : `no-slots body=${rawBody.substring(0, 200)}`
-
-  const times = slots.map((s) => {
+function slotsToTeeTimes(slots: StartTimeSlot[], date: string, numberOfPlayers: number) {
+  return slots.map((s) => {
     const rawTime = s.StartTime ?? s.startTime ?? s.Time ?? s.time ?? s.Date ?? ''
-    const match = rawTime.match(/(\d{2}:\d{2})/)
-    const avail = s.AvailablePlayers ?? s.availablePlayers ?? s.FreeSlots ?? s.freeSlots ?? null
-    const bookable = s.Bookable ?? s.bookable ?? s.IsBookable ?? s.isBookable ?? s.Available ?? s.available ?? null
+    const { time, date: slotDate } = parseSwedishTime(rawTime)
+    const nested = s.availablity ?? s.Availablity ?? s.availability ?? s.Availability
+    const avail = s.AvailablePlayers ?? s.availablePlayers ?? s.FreeSlots ?? s.freeSlots
+      ?? nested?.availableSlots ?? nested?.AvailableSlots ?? null
+    const bookable = s.Bookable ?? s.bookable ?? s.IsBookable ?? s.isBookable ?? s.Available ?? s.available
+      ?? nested?.bookable ?? nested?.Bookable ?? null
     return {
-      time: match ? match[1] : rawTime,
+      time,
       availableSlots: avail ?? 4,
       slotId: s.SlotId ?? s.slotId ?? s.Id ?? s.id,
       _bookable: bookable,
       _avail: avail,
+      _date: slotDate,
     }
   })
   .filter((t) => t.time.match(/^\d{2}:\d{2}$/))
+  .filter((t) => !t._date || t._date === date)
   .filter((t) => t._bookable !== false)
   .filter((t) => t._avail === null || t._avail >= numberOfPlayers)
-  .map(({ _bookable: _b, _avail: _a, ...t }) => t)
+  .map(({ _bookable: _b, _avail: _a, _date: _dd, ...t }) => t)
+}
+
+// Step 3: Fetch available tee times for the requested date
+async function fetchStartTimes(
+  cookies: string,
+  token: string,
+  facilityId: string,
+  date: string,
+  numberOfPlayers: number
+): Promise<{ times: TeeTime[]; rawDebug: string }> {
+  const commonHeaders = {
+    Cookie: cookies,
+    Authorization: `Bearer ${token}`,
+    Accept: 'application/json',
+    Origin: BASE,
+    Referer: `${BASE}/bokning/`,
+  }
+
+  // Primary endpoint — Overview (may return today's slots regardless of date)
+  const overviewUrl = new URL(`${BASE}/bokning/api/Clubs/Courses/StartTimes/Overview`)
+  overviewUrl.searchParams.set('CourseId', facilityId)
+  overviewUrl.searchParams.set('FacilityId', facilityId)
+  overviewUrl.searchParams.set('Date', date)
+  overviewUrl.searchParams.set('NumberOfPlayers', String(numberOfPlayers))
+
+  const res = await fetch(overviewUrl.toString(), {
+    method: 'GET', headers: commonHeaders, signal: sig(),
+  })
+  const rawBody = await res.text().catch(() => '')
+  if (!res.ok) throw new Error(`StartTimes HTTP ${res.status}: ${rawBody.substring(0, 200)}`)
+
+  let data: unknown
+  try { data = JSON.parse(rawBody) } catch {
+    throw new Error(`StartTimes ej JSON: ${rawBody.substring(0, 150)}`)
+  }
+
+  const { slots: overviewSlots, courseUUID } = extractSlots(data)
+  const rawDebug = `uuid=${courseUUID} slot[0]=${JSON.stringify(overviewSlots[0] ?? {}).substring(0, 400)}`
+
+  // Check if Overview returned the correct date
+  let times = slotsToTeeTimes(overviewSlots, date, numberOfPlayers)
+
+  if (times.length === 0 && overviewSlots.length > 0) {
+    // Overview returned wrong-date slots — try date-specific endpoints
+    const uuidToTry = courseUUID || facilityId
+    const fallbackUrls = [
+      // CourseSchedule endpoint (proper date-specific slots)
+      `${BASE}/bokning/api/Clubs/${uuidToTry}/CourseSchedule?courseId=${uuidToTry}&date=${date}&numberOfPlayers=${numberOfPlayers}`,
+      // StartTimes without /Overview
+      `${BASE}/bokning/api/Clubs/Courses/StartTimes?CourseId=${uuidToTry}&FacilityId=${uuidToTry}&Date=${date}&NumberOfPlayers=${numberOfPlayers}`,
+      // Generic StartTimes
+      `${BASE}/bokning/api/StartTimes?facilityId=${uuidToTry}&date=${date}&numberOfPlayers=${numberOfPlayers}`,
+    ]
+
+    for (const fallbackUrl of fallbackUrls) {
+      try {
+        const fbRes = await fetch(fallbackUrl, { method: 'GET', headers: commonHeaders, signal: sig() })
+        if (!fbRes.ok) continue
+        const fbData = await fbRes.json().catch(() => null)
+        if (!fbData) continue
+        const { slots: fbSlots } = extractSlots(fbData)
+        const fbTimes = slotsToTeeTimes(fbSlots, date, numberOfPlayers)
+        if (fbTimes.length > 0) {
+          return { times: fbTimes, rawDebug: `fallback=${fallbackUrl} slot[0]=${JSON.stringify(fbSlots[0] ?? {}).substring(0, 300)}` }
+        }
+      } catch { /* try next */ }
+    }
+  }
 
   return { times, rawDebug }
 }
