@@ -170,10 +170,17 @@ interface StartTimeSlot {
   AvailablePlayers?: number
   availablePlayers?: number
   FreeSlots?: number
+  freeSlots?: number
   SlotId?: string
   slotId?: string
   Id?: string
   id?: string
+  Bookable?: boolean
+  bookable?: boolean
+  IsBookable?: boolean
+  isBookable?: boolean
+  Available?: boolean
+  available?: boolean
 }
 
 // Step 3: Fetch available tee times
@@ -239,12 +246,20 @@ async function fetchStartTimes(
   return slots.map((s) => {
     const rawTime = s.StartTime ?? s.startTime ?? s.Time ?? s.time ?? s.Date ?? ''
     const match = rawTime.match(/(\d{2}:\d{2})/)
+    const avail = s.AvailablePlayers ?? s.availablePlayers ?? s.FreeSlots ?? s.freeSlots ?? null
+    const bookable = s.Bookable ?? s.bookable ?? s.IsBookable ?? s.isBookable ?? s.Available ?? s.available ?? null
     return {
       time: match ? match[1] : rawTime,
-      availableSlots: s.AvailablePlayers ?? s.availablePlayers ?? s.FreeSlots ?? 4,
+      availableSlots: avail ?? 4,
       slotId: s.SlotId ?? s.slotId ?? s.Id ?? s.id,
+      _bookable: bookable,
+      _avail: avail,
     }
-  }).filter((t) => t.time.match(/^\d{2}:\d{2}$/))
+  })
+  .filter((t) => t.time.match(/^\d{2}:\d{2}$/))
+  .filter((t) => t._bookable !== false)
+  .filter((t) => t._avail === null || t._avail >= numberOfPlayers)
+  .map(({ _bookable: _b, _avail: _a, ...t }) => t)
 }
 
 // Step 4: Book a slot via MinGolf proxy
@@ -357,18 +372,21 @@ export async function scanAndBook(job: Job): Promise<ScanResult> {
   if (teeTimes.length === 0) return { found: false, teeTimes: [] }
   if (job.mode === 'notify') return { found: true, teeTimes }
 
-  // 5. Auto-book first matching slot
-  const first = teeTimes[0]
-  if (!first.slotId) {
+  // 5. Auto-book — try first 5 slots in time range until one succeeds
+  const candidates = teeTimes.filter((t) => t.slotId).slice(0, 5)
+  if (candidates.length === 0) {
     const sample = JSON.stringify(teeTimes[0]).substring(0, 200)
     return { found: true, teeTimes, error: `Inget slot-ID (slot: ${sample})` }
   }
 
-  try {
-    const booked = await bookSlot(cookies, token, first.slotId, job.friend_golf_ids ?? [], profile)
-    if (booked) return { found: true, teeTimes, bookedTime: first.time }
-    return { found: true, teeTimes, error: 'Hittade tider men bokning misslyckades' }
-  } catch (err) {
-    return { found: true, teeTimes, error: err instanceof Error ? err.message : 'Bokning misslyckades' }
+  const lastErrors: string[] = []
+  for (const slot of candidates) {
+    try {
+      const booked = await bookSlot(cookies, token, slot.slotId!, job.friend_golf_ids ?? [], profile)
+      if (booked) return { found: true, teeTimes, bookedTime: slot.time }
+    } catch (err) {
+      lastErrors.push(`${slot.time}: ${err instanceof Error ? err.message : 'fel'}`)
+    }
   }
+  return { found: true, teeTimes, error: `Bokning misslyckades för ${candidates.length} tider: ${lastErrors.join(' | ')}` }
 }
