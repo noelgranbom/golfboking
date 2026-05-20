@@ -268,6 +268,8 @@ async function bookSlot(
   cookies: string,
   token: string,
   slotId: string,
+  bookerGolfId: string,
+  numberOfPlayers: number,
   friendGolfIds: string[],
   profile: UserProfile | null
 ): Promise<boolean> {
@@ -280,16 +282,20 @@ async function bookSlot(
     Referer: `${BASE}/bokning/`,
   }
 
-  // 1. Lock the slot
+  // 1. Lock the slot — send numberOfPlayers so the server reserves the right number of spots
   const lockRes = await fetch(`${BASE}/bokning/api/Slot/${slotId}/Lock`, {
-    method: 'POST', headers, signal: sig(),
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ numberOfPlayers }),
+    signal: sig(),
   })
   if (!lockRes.ok && lockRes.status !== 204) {
     const b = await lockRes.text().catch(() => '')
     throw new Error(`Lock HTTP ${lockRes.status}: ${b.substring(0, 200)}`)
   }
 
-  // 2. Build slotBookings array
+  // 2. Build slotBookings array — always use job.golf_id for booker (profile golfId as bonus)
+  const effectiveGolfId = profile?.golfId || bookerGolfId
   const makeBooking = (golfId: string, personId: string | undefined, isBooker: boolean) => ({
     slotBookingId: `new_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`,
     state: 'Added',
@@ -315,7 +321,7 @@ async function bookSlot(
   })
 
   const slotBookings = [
-    makeBooking(profile?.golfId ?? '', profile?.personId, true),
+    makeBooking(effectiveGolfId, profile?.personId, true),
     ...friendGolfIds.map((golfId) => makeBooking(golfId, undefined, false)),
   ]
 
@@ -382,7 +388,7 @@ export async function scanAndBook(job: Job): Promise<ScanResult> {
   const lastErrors: string[] = []
   for (const slot of candidates) {
     try {
-      const booked = await bookSlot(cookies, token, slot.slotId!, job.friend_golf_ids ?? [], profile)
+      const booked = await bookSlot(cookies, token, slot.slotId!, job.golf_id, job.num_players, job.friend_golf_ids ?? [], profile)
       if (booked) return { found: true, teeTimes, bookedTime: slot.time }
     } catch (err) {
       lastErrors.push(`${slot.time}: ${err instanceof Error ? err.message : 'fel'}`)
