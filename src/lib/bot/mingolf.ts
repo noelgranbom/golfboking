@@ -387,8 +387,13 @@ export async function scanAndBook(job: Job): Promise<ScanResult> {
   if (teeTimes.length === 0) return { found: false, teeTimes: [] }
   if (job.mode === 'notify') return { found: true, teeTimes }
 
-  // 5. Auto-book — try first 5 slots in time range until one succeeds
-  const candidates = teeTimes.filter((t) => t.slotId).slice(0, 5)
+  // 5. Auto-book — try up to 10 slots spread across the time range (not just the first 5)
+  // Morning slots are often full; sampling throughout the day finds available times.
+  const withId = teeTimes.filter((t) => t.slotId)
+  const candidates = withId.length <= 10 ? withId : (() => {
+    const step = Math.floor(withId.length / 10)
+    return withId.filter((_, i) => i % step === 0).slice(0, 10)
+  })()
   if (candidates.length === 0) {
     const sample = JSON.stringify(teeTimes[0]).substring(0, 200)
     return { found: true, teeTimes, error: `Inget slot-ID (slot: ${sample})` }
