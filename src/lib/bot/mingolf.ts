@@ -484,25 +484,37 @@ async function fetchStartTimes(
   }
 
   if (correctUUID) {
-    // Overview respects a valid club UUID and returns that club's course UUID in
-    // courseSchedule.courseId. CourseSchedule only works with course UUIDs, not club UUIDs.
-    const clubOverviewUrl = `${BASE}/bokning/api/Clubs/Courses/StartTimes/Overview?CourseId=${correctUUID}&FacilityId=${correctUUID}&Date=${date}&NumberOfPlayers=${numberOfPlayers}`
-    const overviewClubData = await tryFetch(clubOverviewUrl)
-    if (overviewClubData) {
-      const { slots: clubSlots, courseUUID } = extractSlots(overviewClubData)
-      rawDebug += ` clubOverviewUUID=${courseUUID || 'none'}`
-
-      if (courseUUID) {
-        const times = await tryDateEndpoints(courseUUID)
-        if (times) return { times, rawDebug }
-      }
-
-      const directTimes = slotsToTeeTimes(clubSlots, date, numberOfPlayers)
-      if (directTimes.length > 0) {
-        rawDebug += ` found:${directTimes.length}@clubOverview-direct`
-        return { times: directTimes, rawDebug }
+    // Phase 2: Overview with ONLY FacilityId (no CourseId) returns favouriteClubs[] for the
+    // requested club with coursesAndTees[]. Passing CourseId causes the API to ignore FacilityId
+    // and return home club data instead — so we must NOT include CourseId here.
+    const ovUrl = `${BASE}/bokning/api/Clubs/Courses/StartTimes/Overview?FacilityId=${correctUUID}&Date=${date}&NumberOfPlayers=${numberOfPlayers}`
+    const ovData = await tryFetch(ovUrl)
+    if (ovData) {
+      const d = ovData as Record<string, unknown>
+      const clubs = d?.favouriteClubs
+      if (Array.isArray(clubs)) {
+        for (const club of clubs) {
+          const c = club as Record<string, unknown>
+          if (c?.id !== correctUUID) continue
+          const coursesAndTees = c?.coursesAndTees
+          if (Array.isArray(coursesAndTees)) {
+            for (const course of coursesAndTees) {
+              const cc = course as Record<string, unknown>
+              const courseId = String(cc?.id ?? '')
+              if (!courseId.includes('-')) continue
+              rawDebug += ` courseUUID=${courseId}(${String(cc?.name ?? '')})`
+              const times = await tryDateEndpoints(courseId)
+              if (times) return { times, rawDebug }
+            }
+          }
+          break
+        }
       }
     }
+
+    // Fallback: some clubs use the same UUID for club and course
+    const times = await tryDateEndpoints(correctUUID)
+    if (times) return { times, rawDebug }
 
     rawDebug += ` allEndpoints:0`
     return { times: [], rawDebug }
