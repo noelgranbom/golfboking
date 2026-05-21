@@ -9,11 +9,18 @@ import type { Job, GolfClub, JobMode, CreateJobInput } from '@/lib/types'
 
 const STEPS = ['Inloggning', 'Sök tid', 'Aktivera']
 
+interface CourseOption {
+  id: string
+  name: string
+}
+
 interface FormData {
   email: string
   golf_id: string
   golf_password: string
   club: GolfClub | null
+  course_id: string | null
+  course_name: string | null
   date: string
   time_from: string
   time_to: string
@@ -27,6 +34,8 @@ const DEFAULT_FORM: FormData = {
   golf_id: '',
   golf_password: '',
   club: null,
+  course_id: null,
+  course_name: null,
   date: '',
   time_from: '07:00',
   time_to: '12:00',
@@ -42,6 +51,8 @@ export default function Home() {
   const [loading, setLoading] = useState(false)
   const [friendInput, setFriendInput] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [courses, setCourses] = useState<CourseOption[]>([])
+  const [loadingCourses, setLoadingCourses] = useState(false)
 
   useEffect(() => {
     fetchJobs()
@@ -54,6 +65,28 @@ export default function Home() {
 
   function set<K extends keyof FormData>(key: K, value: FormData[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))
+  }
+
+  async function handleClubChange(club: GolfClub | null) {
+    setForm((prev) => ({ ...prev, club, course_id: null, course_name: null }))
+    setCourses([])
+    if (!club || !form.golf_id || !form.golf_password) return
+    setLoadingCourses(true)
+    try {
+      const res = await fetch('/api/courses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ golf_id: form.golf_id, golf_password: form.golf_password, club_name: club.name }),
+      })
+      const data = await res.json()
+      const fetched: CourseOption[] = data.courses ?? []
+      setCourses(fetched)
+      if (fetched.length === 1) {
+        setForm((prev) => ({ ...prev, course_id: fetched[0].id, course_name: fetched[0].name }))
+      }
+    } catch { /* ignore */ } finally {
+      setLoadingCourses(false)
+    }
   }
 
   function addFriend() {
@@ -78,6 +111,8 @@ export default function Home() {
       golf_password: form.golf_password,
       club_id: form.club.id,
       club_name: form.club.name,
+      course_id: form.course_id,
+      course_name: form.course_name,
       date: form.date,
       time_from: form.time_from,
       time_to: form.time_to,
@@ -103,7 +138,8 @@ export default function Home() {
   }
 
   const step1Valid = form.email && form.golf_id && form.golf_password
-  const step2Valid = form.club && form.date && form.time_from && form.time_to
+  const step2Valid = form.club && form.date && form.time_from && form.time_to &&
+    !loadingCourses && (courses.length <= 1 || form.course_id)
 
   const today = new Date().toISOString().split('T')[0]
 
@@ -224,8 +260,40 @@ export default function Home() {
 
               <div>
                 <label className={labelClass}>Golfklubb</label>
-                <ClubSearch value={form.club} onChange={(c) => set('club', c)} />
+                <ClubSearch value={form.club} onChange={handleClubChange} />
               </div>
+
+              {/* Bana — visas när klubben har flera banor */}
+              {loadingCourses && (
+                <div className="flex items-center gap-2 text-xs text-[var(--gb-fg-faint)]">
+                  <span
+                    className="inline-block w-1.5 h-1.5 rounded-full bg-[var(--gb-brass)]"
+                    style={{ animation: 'pulse-dot 1.5s ease-in-out infinite' }}
+                  />
+                  Hämtar banor…
+                </div>
+              )}
+              {!loadingCourses && courses.length > 1 && (
+                <div>
+                  <label className={labelClass}>Bana</label>
+                  <div className="space-y-2">
+                    {courses.map((course) => (
+                      <button
+                        key={course.id}
+                        type="button"
+                        onClick={() => setForm((prev) => ({ ...prev, course_id: course.id, course_name: course.name }))}
+                        className={`w-full text-left px-4 py-3 rounded-[var(--gb-radius-md)] border transition-colors duration-[var(--gb-dur-fast)] text-sm ${
+                          form.course_id === course.id
+                            ? 'border-[var(--gb-fairway)] bg-[var(--gb-fairway)]/10 text-[var(--gb-fg)]'
+                            : 'border-[var(--gb-border)] bg-[var(--gb-bg-input)] text-[var(--gb-fg-muted)] hover:border-[var(--gb-border-strong)]'
+                        }`}
+                      >
+                        {course.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className={labelClass}>Datum</label>
@@ -352,6 +420,12 @@ export default function Home() {
                   <span className="text-[var(--gb-fg-soft)]">Klubb:</span>{' '}
                   <span className="text-[var(--gb-fg)]">{form.club?.name}</span>
                 </p>
+                {form.course_name && (
+                  <p className="text-[var(--gb-fg-muted)]">
+                    <span className="text-[var(--gb-fg-soft)]">Bana:</span>{' '}
+                    <span className="text-[var(--gb-fg)]">{form.course_name}</span>
+                  </p>
+                )}
                 <p className="text-[var(--gb-fg-muted)]">
                   <span className="text-[var(--gb-fg-soft)]">Datum:</span>{' '}
                   <span className="text-[var(--gb-fg)]">{form.date}</span>

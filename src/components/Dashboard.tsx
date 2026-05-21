@@ -144,6 +144,9 @@ export function Dashboard({ job: initialJob, onDelete }: DashboardProps) {
           <p className="text-[var(--gb-fg-muted)] text-sm">
             {job.date} kl. {job.time_from.substring(0, 5)}–{job.time_to.substring(0, 5)} · {job.num_players} spelare
           </p>
+          {job.course_name && (
+            <p className="text-[var(--gb-fg-soft)] text-xs mt-0.5">{job.course_name}</p>
+          )}
           {job.friend_golf_ids?.length > 0 && (
             <p className="text-[var(--gb-fg-soft)] text-xs mt-1">
               Medspelare: {job.friend_golf_ids.join(', ')}

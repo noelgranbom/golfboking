@@ -371,7 +371,8 @@ async function fetchStartTimes(
   facilityId: string,
   clubName: string,
   date: string,
-  numberOfPlayers: number
+  numberOfPlayers: number,
+  courseId?: string
 ): Promise<{ times: TeeTime[]; rawDebug: string }> {
   const commonHeaders = {
     Cookie: cookies,
@@ -382,6 +383,39 @@ async function fetchStartTimes(
   }
 
   let rawDebug = `club="${clubName}" facilityId=${facilityId}`
+
+  // If a specific course UUID was stored on the job, use it directly — skip all discovery.
+  if (courseId) {
+    rawDebug += ` directCourse=${courseId}`
+    const tryFetch = async (url: string): Promise<unknown> => {
+      try {
+        const r = await fetch(url, { headers: commonHeaders, signal: sig() })
+        if (!r.ok) { rawDebug += ` ${url.split('/api/')[1]?.split('?')[0]}:${r.status}`; return null }
+        return await r.json().catch(() => null)
+      } catch { return null }
+    }
+    const tryDateEndpoints = async (uuid: string): Promise<TeeTime[] | null> => {
+      for (const url of [
+        `${BASE}/bokning/api/Clubs/${uuid}/CourseSchedule?courseId=${uuid}&date=${date}&numberOfPlayers=${numberOfPlayers}`,
+        `${BASE}/bokning/api/Clubs/Courses/StartTimes?CourseId=${uuid}&FacilityId=${uuid}&Date=${date}&NumberOfPlayers=${numberOfPlayers}`,
+        `${BASE}/bokning/api/StartTimes?facilityId=${uuid}&date=${date}&numberOfPlayers=${numberOfPlayers}`,
+      ]) {
+        const data = await tryFetch(url)
+        if (!data) continue
+        const { slots } = extractSlots(data)
+        const times = slotsToTeeTimes(slots, date, numberOfPlayers)
+        if (times.length > 0) {
+          rawDebug += ` found:${times.length}@${url.split('/api/')[1]?.split('?')[0]}`
+          return times
+        }
+      }
+      return null
+    }
+    const times = await tryDateEndpoints(courseId)
+    if (times) return { times, rawDebug }
+    rawDebug += ` directFailed`
+    return { times: [], rawDebug }
+  }
 
   // Name normaliser for fuzzy matching between clubs.ts names and MinGolf API names
   const norm = (s: string) => s.toLowerCase()
@@ -656,7 +690,7 @@ export async function scanAndBook(job: Job): Promise<ScanResult> {
   let allTimes: TeeTime[]
   let rawDebug = ''
   try {
-    const result = await fetchStartTimes(cookies, token, job.club_id, job.club_name, job.date, job.num_players)
+    const result = await fetchStartTimes(cookies, token, job.club_id, job.club_name, job.date, job.num_players, job.course_id ?? undefined)
     allTimes = result.times
     rawDebug = result.rawDebug
   } catch (err) {

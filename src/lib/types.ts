@@ -11,6 +11,8 @@ export interface Job {
   golf_password: string
   club_id: string
   club_name: string
+  course_id: string | null
+  course_name: string | null
   date: string
   time_from: string
   time_to: string
@@ -42,6 +44,8 @@ export interface CreateJobInput {
   golf_password: string
   club_id: string
   club_name: string
+  course_id?: string | null
+  course_name?: string | null
   date: string
   time_from: string
   time_to: string
